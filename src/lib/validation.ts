@@ -121,8 +121,6 @@ export const missionSchema = z
     }
   });
 
-export const iberoUploadSchema = z.object({ ics: z.string().min(1, "El archivo está vacío").max(1_000_000) });
-
 export const planProposeSchema = z.object({
   from: dateKey,
   to: dateKey,

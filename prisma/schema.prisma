@@ -41,8 +41,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  /// Horario de clases exportado del calendario Ibero (.ics); se usa para proponer horarios libres.
+  /// Horario de clases Ibero: calendario .ics o materias leídas del PDF "Materias inscritas"
+  /// (sólo materia, salón, día, horario y vigencia). Se usa para proponer horarios libres.
   iberoIcs          String?
+  iberoClasses      Json?
   iberoIcsUpdatedAt DateTime?
 
   bookingsCreated    Booking[]            @relation("BookingCreator")

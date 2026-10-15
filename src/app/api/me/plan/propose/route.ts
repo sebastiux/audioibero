@@ -18,7 +18,7 @@ export const POST = route(async (req) => {
 
   const [settings, user, mine, all, missions] = await Promise.all([
     getSettings(),
-    prisma.user.findUniqueOrThrow({ where: { id: me.id }, select: { iberoIcs: true } }),
+    prisma.user.findUniqueOrThrow({ where: { id: me.id }, select: { iberoIcs: true, iberoClasses: true } }),
     prisma.booking.findMany({
       where: { start: { lt: end }, end: { gt: start }, participants: { some: { userId: me.id } } },
       select: { start: true, end: true, kind: true, project: { select: { name: true } } },
@@ -29,7 +29,7 @@ export const POST = route(async (req) => {
     }),
     missionOccurrences(start, end, tz),
   ]);
-  const classes = iberoClasses(user.iberoIcs, start, end, tz);
+  const classes = iberoClasses(user, start, end, tz);
 
   const result = proposePersonal({
     fromKey: data.from,
@@ -48,7 +48,7 @@ export const POST = route(async (req) => {
   });
 
   return NextResponse.json({
-    hasIbero: Boolean(user.iberoIcs),
+    hasIbero: Boolean(user.iberoIcs || user.iberoClasses),
     blocks: result.blocks,
     missingMinutes: Object.values(result.missing).reduce((a, b) => a + b, 0),
     busy: [

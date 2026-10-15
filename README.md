@@ -10,7 +10,7 @@ Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero
 | --- | :---: | :---: |
 | Ver el calendario del club (quién va, cuándo y si el lab está lleno) | ✅ | ✅ |
 | Reservar horas en el lab, abrir una sesión de proyecto o registrar trabajo asíncrono | ✅ | ✅ (para cualquiera) |
-| **Mi plan**: subir su calendario Ibero (.ics) y recibir una propuesta según las horas que elija | ✅ | ✅ |
+| **Mi plan**: subir su PDF de materias inscritas (o un .ics) y recibir una propuesta según las horas que elija | ✅ | ✅ |
 | Exportar sus reservas y las misiones a su calendario (.ics) | ✅ | ✅ |
 | Ver misiones generales (recordatorios y sesiones recurrentes) | ✅ | ✅ |
 | Crear misiones generales: recordatorios y sesiones recurrentes | — | ✅ |
@@ -28,7 +28,7 @@ Reglas: nadie puede estar en dos reservas que se crucen; la suma de personas en 
 
 ## Mi plan (calendario Ibero)
 
-En `/mi-plan` cada miembro sube el .ics de su calendario Ibero (Outlook → Configuración → Calendarios compartidos → Publicar un calendario → enlace ICS). Elige cuántas horas a la semana quiere, la duración de los bloques y el tipo (lab, proyecto o asíncrono), y la app propone bloques que no chocan con sus clases, sus reservas ni las misiones generales: uno por día, de preferencia en días que ya va a la Ibero y pegados a sus clases, y donde el lab tiene cupo. Los bloques se pueden arrastrar, estirar, quitar o agregar antes de reservarlos. El horario Ibero guardado también lo usa el calendario recomendado del admin.
+En `/mi-plan` cada miembro sube el PDF de **Materias inscritas** (Servicios en Línea → Servicios escolares → Materias inscritas → Guardar como PDF); también acepta un calendario .ics. Del PDF sólo se guardan materia, salón, día, horario y vigencia; nombre, cuenta y adeudos se descartan y el archivo no se almacena. Elige cuántas horas a la semana quiere, la duración de los bloques y el tipo (lab, proyecto o asíncrono), y la app propone bloques que no chocan con sus clases, sus reservas ni las misiones generales: uno por día, de preferencia en días que ya va a la Ibero y pegados a sus clases, y donde el lab tiene cupo. Los bloques se pueden arrastrar, estirar, quitar o agregar antes de reservarlos. El horario Ibero guardado también lo usa el calendario recomendado del admin.
 
 ## Misiones generales
 
@@ -71,6 +71,7 @@ El seed es idempotente: si el admin ya existe no cambia su contraseña. Para res
 ```
 prisma/schema.prisma        Modelos: User, Project, ProjectMember, Booking, BookingParticipant, Mission, LabSettings
 src/lib/scheduler.ts        Algoritmos: calendario recomendado y plan personal
+src/lib/ibero-pdf.ts        Lectura del PDF "Materias inscritas" de la Ibero
 src/lib/ibero.ts            Lectura de calendarios .ics (clases recurrentes)
 src/lib/missions.ts         Expansión de misiones recurrentes
 src/lib/rules.ts            Reglas de negocio (validación de horarios, choques, cupo)

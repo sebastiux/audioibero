@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { api, formatHours, minutesToHHMM, toDateInput } from "@/lib/client";
+import type { IberoClass } from "@/lib/ibero-pdf";
 import type { LabConfig, ProjectOption, SlotKind } from "@/lib/types";
 
 type Busy = { start: string; end: string; title: string; type: "class" | "booking" | "mission" };
@@ -29,7 +30,14 @@ const BUSY_STYLE: Record<Busy["type"], { bg: string; label: string }> = {
   mission: { bg: "#16161d", label: "Misión general" },
 };
 
-export function PlanPanel(props: { iberoUpdatedAt: string | null; projects: ProjectOption[]; lab: LabConfig }) {
+const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+export function PlanPanel(props: {
+  iberoUpdatedAt: string | null;
+  iberoClasses: IberoClass[] | null;
+  projects: ProjectOption[];
+  lab: LabConfig;
+}) {
   const router = useRouter();
   const initial = nextWeek();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -51,8 +59,18 @@ export function PlanPanel(props: { iberoUpdatedAt: string | null; projects: Proj
   async function upload(file: File) {
     setUploadMsg(null);
     try {
-      const res = await api<{ events: number; recurring: number }>("/api/me/ibero", { method: "PUT", body: { ics: await file.text() } });
-      setUploadMsg({ ok: true, text: `Horario guardado: ${res.events} eventos (${res.recurring} semanales).` });
+      const form = new FormData();
+      form.append("file", file);
+      const r = await fetch("/api/me/ibero", { method: "POST", body: form });
+      const res = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(res.error ?? `Error ${r.status}`);
+      setUploadMsg({
+        ok: true,
+        text:
+          res.source === "pdf"
+            ? `Horario guardado: ${res.subjects} materias, ${res.sessions} clases a la semana.`
+            : `Horario guardado: ${res.events} eventos (${res.recurring} semanales).`,
+      });
       router.refresh();
     } catch (err) {
       setUploadMsg({ ok: false, text: (err as Error).message });
@@ -148,8 +166,8 @@ export function PlanPanel(props: { iberoUpdatedAt: string | null; projects: Proj
         <div>
           <h1 className="text-2xl font-bold">Mi plan</h1>
           <p className="mt-1 max-w-3xl text-sm text-zinc-500">
-            Sube tu calendario Ibero, di cuántas horas quieres dedicarle al club y te proponemos horarios que no choquen con tus
-            clases, cerca de ellas y donde el lab tenga lugar. Arrastra los bloques para ajustarlos y luego resérvalos.
+            Sube tu PDF de materias inscritas, di cuántas horas quieres dedicarle al club y te proponemos horarios que no choquen con
+            tus clases, cerca de ellas y donde el lab tenga lugar. Arrastra los bloques para ajustarlos y luego resérvalos.
           </p>
         </div>
         <a className="btn-ghost" href="/api/me/export" download>⤓ Exportar mis reservas (.ics)</a>
@@ -162,24 +180,62 @@ export function PlanPanel(props: { iberoUpdatedAt: string | null; projects: Proj
             <p className="text-sm text-zinc-500">
               {props.iberoUpdatedAt
                 ? `Guardado el ${new Date(props.iberoUpdatedAt).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}. Súbelo de nuevo si cambió.`
-                : "Aún no lo subes. Sin él, la propuesta sólo evita tus reservas y las misiones generales."}
+                : "Sube el PDF de “Materias inscritas”. Sin él, la propuesta sólo evita tus reservas y las misiones generales."}
             </p>
           </div>
           <div className="flex gap-2">
-            <input ref={fileRef} type="file" accept=".ics,text/calendar" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
-            <button className="btn-dark" onClick={() => fileRef.current?.click()}>{props.iberoUpdatedAt ? "Actualizar .ics" : "Subir .ics"}</button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,application/pdf,.ics,text/calendar"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+            />
+            <button className="btn-dark" onClick={() => fileRef.current?.click()}>
+              {props.iberoUpdatedAt ? "Actualizar horario" : "Subir PDF de materias"}
+            </button>
             {props.iberoUpdatedAt && <button className="btn-ghost" onClick={removeIbero}>Borrar</button>}
           </div>
         </div>
+        {props.iberoClasses && props.iberoClasses.length > 0 && (
+          <div className="overflow-x-auto rounded-lg border border-zinc-200">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+                <tr>
+                  <th className="px-3 py-2">Materia</th>
+                  <th className="px-3 py-2">Día</th>
+                  <th className="px-3 py-2">Horario</th>
+                  <th className="px-3 py-2">Salón</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {[...props.iberoClasses]
+                  .sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) || a.startMinute - b.startMinute)
+                  .map((c, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-1.5">
+                        <span className="text-zinc-400">{c.code}</span> {c.name}
+                      </td>
+                      <td className="px-3 py-1.5">{DAY_NAMES[c.weekday]}</td>
+                      <td className="px-3 py-1.5 tabular-nums">{minutesToHHMM(c.startMinute)}–{minutesToHHMM(c.endMinute)}</td>
+                      <td className="px-3 py-1.5">{c.room}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <details className="text-sm text-zinc-600">
-          <summary className="cursor-pointer font-medium text-zinc-700">¿Cómo exporto mi calendario Ibero?</summary>
+          <summary className="cursor-pointer font-medium text-zinc-700">¿De dónde saco el PDF?</summary>
           <ol className="mt-2 list-decimal space-y-1 pl-5">
-            <li>Entra a Outlook con tu cuenta Ibero (outlook.office.com) y abre <b>Calendario</b>.</li>
-            <li>Ve a <b>Configuración → Calendario → Calendarios compartidos → Publicar un calendario</b>.</li>
-            <li>Elige tu calendario, permisos <b>“Puede ver todos los detalles”</b> y pulsa <b>Publicar</b>.</li>
-            <li>Abre el enlace <b>ICS</b> en el navegador para descargar el archivo y súbelo aquí.</li>
+            <li>Entra a <b>Servicios en Línea</b> de la Ibero.</li>
+            <li>Ve a <b>Servicios escolares → Materias inscritas</b>.</li>
+            <li>Imprime la página y elige <b>Guardar como PDF</b> (o descarga el comprobante) y súbelo aquí.</li>
           </ol>
-          <p className="mt-2">También sirve cualquier archivo .ics (Google Calendar → Configuración → Exportar).</p>
+          <p className="mt-2">
+            Sólo guardamos tus materias y horarios; el resto del documento (nombre, cuenta, adeudos) no se almacena. También puedes subir un
+            calendario .ics (Outlook o Google Calendar).
+          </p>
         </details>
         {uploadMsg && (
           <p className={`rounded-lg px-3 py-2 text-sm ${uploadMsg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>{uploadMsg.text}</p>
