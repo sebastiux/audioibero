@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MEMBER
+  ADMIN
+}
+
+/// LAB = uso libre del laboratorio; PROJECT = trabajo en un proyecto de equipo.
+enum SlotKind {
+  LAB
+  PROJECT
+}
+
+enum AssignmentSource {
+  MANUAL
+  RECOMMENDED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(MEMBER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  availabilities      Availability[]
+  assignments         Assignment[]    @relation("AssignmentUser")
+  assignmentsCreated  Assignment[]    @relation("AssignmentCreator")
+  projectMemberships  ProjectMember[]
+  projectsCreated     Project[]
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String    @default("#7c3aed")
+  active      Boolean   @default(true)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  members        ProjectMember[]
+  availabilities Availability[]
+  assignments    Assignment[]
+}
+
+model ProjectMember {
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
+}
+
+/// Espacio libre: el miembro indica cuándo puede acudir al lab o trabajar en un proyecto.
+model Availability {
+  id        String   @id @default(cuid())
+  userId    String
+  start     DateTime
+  end       DateTime
+  kind      SlotKind @default(LAB)
+  projectId String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([start, end])
+  @@index([userId, start])
+}
+
+/// Día/horario asignado por un admin (manual o desde el calendario recomendado).
+model Assignment {
+  id          String           @id @default(cuid())
+  userId      String
+  start       DateTime
+  end         DateTime
+  kind        SlotKind         @default(LAB)
+  projectId   String?
+  notes       String?
+  source      AssignmentSource @default(MANUAL)
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user      User     @relation("AssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("AssignmentCreator", fields: [createdById], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([start, end])
+  @@index([userId, start])
+}
+
+/// Configuración única del laboratorio (fila con id = 1).
+model LabSettings {
+  id                  Int      @id @default(1)
+  capacity            Int      @default(4)
+  openMinute          Int      @default(480)
+  closeMinute         Int      @default(1260)
+  /// Días abiertos, 0 = domingo ... 6 = sábado.
+  openDays            Int[]    @default([1, 2, 3, 4, 5])
+  slotMinutes         Int      @default(30)
+  minSessionMinutes   Int      @default(60)
+  maxWeeklyMinutes    Int      @default(600)
+  updatedAt           DateTime @updatedAt
+}

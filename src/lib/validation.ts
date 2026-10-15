@@ -1,0 +1,97 @@
+import { z } from "zod";
+
+export const dateTime = z.coerce.date({ error: "Fecha inválida" });
+export const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa el formato AAAA-MM-DD");
+export const slotKind = z.enum(["LAB", "PROJECT"]);
+
+export const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Correo inválido"),
+  password: z.string().min(1, "Escribe tu contraseña"),
+});
+
+export const registerSchema = z.object({
+  name: z.string().trim().min(2, "Escribe tu nombre").max(80),
+  email: z.string().trim().toLowerCase().email("Correo inválido"),
+  password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(200),
+  inviteCode: z.string().trim(),
+});
+
+const slotBase = {
+  start: dateTime,
+  end: dateTime,
+  kind: slotKind.default("LAB"),
+  projectId: z.string().min(1).nullish(),
+  notes: z.string().trim().max(500).nullish(),
+};
+
+export const availabilityCreateSchema = z.object({
+  ...slotBase,
+  userId: z.string().min(1).optional(), // sólo admin puede crear para otra persona
+});
+
+export const availabilityUpdateSchema = z.object(slotBase).partial();
+
+export const assignmentCreateSchema = z.object({
+  ...slotBase,
+  userId: z.string().min(1),
+});
+
+export const assignmentUpdateSchema = z.object({ ...slotBase, userId: z.string().min(1) }).partial();
+
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color inválido");
+
+export const projectCreateSchema = z.object({
+  name: z.string().trim().min(2, "Nombre muy corto").max(120),
+  description: z.string().trim().max(2000).nullish(),
+  color: hexColor.default("#7c3aed"),
+  startDate: dateTime.nullish(),
+  endDate: dateTime.nullish(),
+  memberIds: z.array(z.string().min(1)).default([]),
+});
+
+export const projectUpdateSchema = projectCreateSchema
+  .omit({ memberIds: true })
+  .partial()
+  .extend({ active: z.boolean().optional(), memberIds: z.array(z.string().min(1)).optional() });
+
+export const userUpdateSchema = z.object({
+  role: z.enum(["MEMBER", "ADMIN"]).optional(),
+  active: z.boolean().optional(),
+});
+
+export const settingsSchema = z
+  .object({
+    capacity: z.number().int().min(1).max(100),
+    openMinute: z.number().int().min(0).max(1440),
+    closeMinute: z.number().int().min(0).max(1440),
+    openDays: z.array(z.number().int().min(0).max(6)).min(1, "Elige al menos un día"),
+    slotMinutes: z.union([z.literal(15), z.literal(30), z.literal(60)]),
+    minSessionMinutes: z.number().int().min(15).max(720),
+    maxWeeklyMinutes: z.number().int().min(30).max(10080),
+  })
+  .refine((s) => s.closeMinute > s.openMinute, { message: "El cierre debe ser después de la apertura", path: ["closeMinute"] });
+
+export const applySchema = z.object({
+  from: dateKey,
+  to: dateKey,
+  replaceRecommended: z.boolean().default(true),
+  proposals: z
+    .array(
+      z.object({
+        userId: z.string().min(1),
+        start: dateTime,
+        end: dateTime,
+        kind: slotKind,
+        projectId: z.string().min(1).nullable(),
+        reason: z.string().max(200).optional(),
+      }),
+    )
+    .max(2000),
+});
+
+export const userCreateSchema = z.object({
+  name: z.string().trim().min(2, "Escribe el nombre").max(80),
+  email: z.string().trim().toLowerCase().email("Correo inválido"),
+  password: z.string().min(8, "La contraseña temporal debe tener al menos 8 caracteres").max(200),
+  role: z.enum(["MEMBER", "ADMIN"]).default("MEMBER"),
+});
