@@ -6,7 +6,8 @@ import { assertCapacity, assertParticipantsFree, validateSlot } from "@/lib/rule
 import { bookingCreateSchema } from "@/lib/validation";
 
 /**
- * Crear una reserva. Un miembro reserva para sí mismo; un admin puede asignarla a quien sea.
+ * Crear una reserva (lab, sesión de proyecto o trabajo asíncrono). Un miembro reserva para sí mismo;
+ * un admin puede asignarla a quien sea. El trabajo asíncrono no ocupa cupo del lab.
  * `?force=1` (sólo admin) permite rebasar el cupo del lab.
  */
 export const POST = route(async (req) => {
@@ -25,7 +26,7 @@ export const POST = route(async (req) => {
     { userId: me.id, requireMembership: !isAdmin },
   );
   await assertParticipantsFree(participantIds, data.start, data.end);
-  if (!force) await assertCapacity(participantIds.length, data.start, data.end);
+  if (!force && data.kind !== "ASYNC") await assertCapacity(participantIds.length, data.start, data.end);
 
   const booking = await prisma.booking.create({
     data: {

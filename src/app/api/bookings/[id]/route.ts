@@ -32,7 +32,7 @@ export const PATCH = route<IdParams>(async (req, { params }) => {
   };
   const { projectId } = await validateSlot(next, { userId: me.id, requireMembership: !isAdmin });
   await assertParticipantsFree(participantIds, next.start, next.end, id);
-  if (!force) await assertCapacity(participantIds.length, next.start, next.end, id);
+  if (!force && next.kind !== "ASYNC") await assertCapacity(participantIds.length, next.start, next.end, id);
 
   const booking = await prisma.$transaction(async (tx) => {
     if (data.participantIds) {

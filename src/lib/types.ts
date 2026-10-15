@@ -1,5 +1,5 @@
 export type Role = "MEMBER" | "ADMIN";
-export type SlotKind = "LAB" | "PROJECT";
+export type SlotKind = "LAB" | "PROJECT" | "ASYNC";
 
 export type Me = { id: string; name: string; role: Role };
 export type UserOption = { id: string; name: string };
@@ -23,4 +23,22 @@ export type BookingItem = {
   createdById: string;
   project: { id: string; name: string; color: string } | null;
   participants: { userId: string; user: { id: string; name: string } }[];
+};
+
+export type MissionOccurrenceItem = { missionId: string; title: string; start: string; end: string };
+
+export type MissionItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  type: "REMINDER" | "RECURRING";
+  pinned: boolean;
+  active: boolean;
+  dueDate: string | null;
+  weekdays: number[];
+  startMinute: number | null;
+  endMinute: number | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  kind: SlotKind;
 };

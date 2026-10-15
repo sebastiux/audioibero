@@ -34,6 +34,8 @@ export type ExistingBooking = {
   end: Date;
   participantIds: string[];
   projectId?: string | null;
+  /** false para lo que bloquea a las personas pero no ocupa el lab (trabajo asíncrono, clases, misiones). */
+  occupiesLab?: boolean;
 };
 
 export type Proposal = {
@@ -112,8 +114,9 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
       const from = Math.max(0, Math.floor((startMin - settings.openMinute) / slot));
       const to = Math.min(nSlots, Math.ceil((endMin - settings.openMinute) / slot));
       const l = load.get(k)!;
+      const people = b.occupiesLab === false ? 0 : b.participantIds.length;
       for (let i = from; i < to; i++) {
-        l[i] += b.participantIds.length;
+        l[i] += people;
         for (const u of b.participantIds) busySet(u, k).add(i);
       }
       if (b.projectId) markProjectDay(b.projectId, k);
@@ -205,4 +208,133 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
 
   proposals.sort((a, b) => a.start.getTime() - b.start.getTime());
   return { proposals, minutesByUser, shortfall };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Plan personal: propone bloques para un miembro según las horas que quiere a la semana.
+// ---------------------------------------------------------------------------------------------
+
+export type PersonalInput = {
+  fromKey: string;
+  toKey: string;
+  timeZone: string;
+  settings: Pick<SchedulerSettings, "capacity" | "openMinute" | "closeMinute" | "openDays" | "slotMinutes">;
+  /** Horas que el miembro quiere a la semana (en minutos) */
+  weeklyMinutes: number;
+  /** Duración de cada bloque (minutos) */
+  blockMinutes: number;
+  /** Si el trabajo es en el lab, se respeta el cupo; si es asíncrono, no. */
+  usesLab: boolean;
+  /** Lo que ocupa al miembro: clases Ibero, sus reservas, misiones generales */
+  busy: { start: Date; end: Date; isClass?: boolean }[];
+  /** Reservas de todo el club, para el cupo del lab */
+  labBookings: { start: Date; end: Date; people: number }[];
+};
+
+export type PersonalResult = {
+  blocks: { start: Date; end: Date }[];
+  /** Minutos que no se pudieron acomodar por semana (clave = lunes de la semana) */
+  missing: Record<string, number>;
+};
+
+export function proposePersonal(input: PersonalInput): PersonalResult {
+  const { settings, timeZone } = input;
+  const slot = settings.slotMinutes;
+  const nSlots = Math.floor((settings.closeMinute - settings.openMinute) / slot);
+  const blockSlots = Math.max(1, Math.round(input.blockMinutes / slot));
+  const openDays = new Set(settings.openDays);
+
+  const days: string[] = [];
+  for (let k = input.fromKey; k <= input.toKey; k = addDaysToKey(k, 1)) {
+    if (openDays.has(weekdayOfKey(k))) days.push(k);
+  }
+  const daySet = new Set(days);
+  const load = new Map(days.map((d) => [d, new Array<number>(nSlots).fill(0)]));
+  const busy = new Map(days.map((d) => [d, new Array<boolean>(nSlots).fill(false)]));
+  const classEdges = new Map(days.map((d) => [d, new Set<number>()])); // slots donde empieza o termina una clase
+  const hasClass = new Set<string>();
+
+  const eachSlot = (start: Date, end: Date, fn: (day: string, from: number, to: number) => void) => {
+    const s = toLocalParts(start, timeZone);
+    const e = toLocalParts(end, timeZone);
+    for (let k = s.dateKey; k <= e.dateKey; k = addDaysToKey(k, 1)) {
+      if (!daySet.has(k)) continue;
+      const startMin = k === s.dateKey ? s.minutes : 0;
+      const endMin = k === e.dateKey ? e.minutes : 1440;
+      const from = Math.max(0, Math.floor((startMin - settings.openMinute) / slot));
+      const to = Math.min(nSlots, Math.ceil((endMin - settings.openMinute) / slot));
+      fn(k, from, to);
+    }
+  };
+
+  for (const b of input.labBookings) {
+    eachSlot(b.start, b.end, (d, from, to) => {
+      const l = load.get(d)!;
+      for (let i = from; i < to; i++) l[i] += b.people;
+    });
+  }
+  for (const b of input.busy) {
+    eachSlot(b.start, b.end, (d, from, to) => {
+      const bz = busy.get(d)!;
+      for (let i = from; i < to; i++) bz[i] = true;
+      if (b.isClass) {
+        hasClass.add(d);
+        classEdges.get(d)!.add(from).add(to);
+      }
+    });
+  }
+
+  const weeks = new Map<string, string[]>();
+  for (const d of days) weeks.set(weekKeyOf(d), [...(weeks.get(weekKeyOf(d)) ?? []), d]);
+
+  const blocks: PersonalResult["blocks"] = [];
+  const missing: Record<string, number> = {};
+  const perDay = new Map<string, number>();
+
+  for (const [weekKey, weekDays] of weeks) {
+    let remaining = input.weeklyMinutes;
+    while (remaining >= slot) {
+      const len = Math.min(blockSlots, Math.floor(remaining / slot));
+      let best: { day: string; start: number; score: number } | null = null;
+      for (const day of weekDays) {
+        const l = load.get(day)!;
+        const bz = busy.get(day)!;
+        const edges = classEdges.get(day)!;
+        for (let start = 0; start + len <= nSlots; start++) {
+          let ok = true;
+          let total = 0;
+          for (let i = start; i < start + len && ok; i++) {
+            if (bz[i] || (input.usesLab && l[i] + 1 > settings.capacity)) ok = false;
+            total += l[i];
+          }
+          if (!ok) continue;
+          // Menor = mejor: un bloque por día, días en que ya vas a la Ibero, pegado a una clase, lab menos lleno.
+          const score =
+            (perDay.get(day) ?? 0) * 1000 +
+            (hasClass.has(day) ? 0 : 200) +
+            (edges.has(start) || edges.has(start + len) ? 0 : 100) +
+            (input.usesLab ? total * 10 : 0) +
+            start * 0.01;
+          if (!best || score < best.score) best = { day, start, score };
+        }
+      }
+      if (!best) break;
+      const bz = busy.get(best.day)!;
+      const l = load.get(best.day)!;
+      for (let i = best.start; i < best.start + len; i++) {
+        bz[i] = true;
+        if (input.usesLab) l[i] += 1;
+      }
+      perDay.set(best.day, (perDay.get(best.day) ?? 0) + 1);
+      blocks.push({
+        start: fromLocal(best.day, settings.openMinute + best.start * slot, timeZone),
+        end: fromLocal(best.day, settings.openMinute + (best.start + len) * slot, timeZone),
+      });
+      remaining -= len * slot;
+    }
+    if (remaining > 0) missing[weekKey] = remaining;
+  }
+
+  blocks.sort((a, b) => a.start.getTime() - b.start.getTime());
+  return { blocks, missing };
 }

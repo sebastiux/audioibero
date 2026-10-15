@@ -12,10 +12,18 @@ enum Role {
   ADMIN
 }
 
-/// LAB = uso libre del laboratorio; PROJECT = trabajo en un proyecto de equipo.
+/// LAB = trabajo en el laboratorio; PROJECT = sesión de equipo en el lab;
+/// ASYNC = trabajo asíncrono fuera del lab (no ocupa cupo), opcionalmente ligado a un proyecto.
 enum SlotKind {
   LAB
   PROJECT
+  ASYNC
+}
+
+/// REMINDER = recordatorio/aviso; RECURRING = sesión general recurrente definida por el admin.
+enum MissionType {
+  REMINDER
+  RECURRING
 }
 
 enum AssignmentSource {
@@ -33,7 +41,14 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  /// Horario de clases Ibero: calendario .ics o materias leídas del PDF "Materias inscritas"
+  /// (sólo materia, salón, día, horario y vigencia). Se usa para proponer horarios libres.
+  iberoIcs          String?
+  iberoClasses      Json?
+  iberoIcsUpdatedAt DateTime?
+
   bookingsCreated    Booking[]            @relation("BookingCreator")
+  missionsCreated    Mission[]
   bookings           BookingParticipant[]
   projectMemberships ProjectMember[]
   projectsCreated    Project[]
@@ -99,6 +114,31 @@ model BookingParticipant {
 
   @@id([bookingId, userId])
   @@index([userId])
+}
+
+/// Misión general: recordatorio relevante o sesión recurrente predefinida por el admin.
+model Mission {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  type        MissionType @default(REMINDER)
+  pinned      Boolean     @default(false)
+  active      Boolean     @default(true)
+  /// Recordatorio: fecha límite opcional
+  dueDate     DateTime?
+  /// Sesión recurrente: días (0 = domingo ... 6 = sábado), horario local en minutos y vigencia
+  weekdays    Int[]       @default([])
+  startMinute Int?
+  endMinute   Int?
+  startsOn    DateTime?
+  endsOn      DateTime?
+  /// LAB = presencial en el lab; ASYNC = remota
+  kind        SlotKind    @default(LAB)
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id])
 }
 
 /// Configuración única del laboratorio (fila con id = 1).

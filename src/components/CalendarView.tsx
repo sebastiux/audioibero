@@ -9,7 +9,8 @@ import type { DatesSetArg, DateSelectArg, EventClickArg, EventDropArg, EventInpu
 import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, formatHours, formatRange, minutesToHHMM } from "@/lib/client";
-import type { BookingItem, LabConfig, Me, ProjectOption, UserOption } from "@/lib/types";
+import Link from "next/link";
+import type { BookingItem, LabConfig, Me, MissionItem, MissionOccurrenceItem, ProjectOption, UserOption } from "@/lib/types";
 import { Modal } from "./Modal";
 import { SlotForm, type SlotFormValue } from "./SlotForm";
 
@@ -18,19 +19,28 @@ type Props = {
   users: UserOption[];
   projects: ProjectOption[];
   lab: LabConfig;
+  /** Recordatorios fijados o próximos para mostrar arriba del calendario */
+  reminders: Pick<MissionItem, "id" | "title" | "dueDate" | "pinned">[];
 };
 
-type Dialog = { type: "create"; start: Date; end: Date } | { type: "booking"; id: string } | null;
+type Dialog =
+  | { type: "create"; start: Date; end: Date }
+  | { type: "booking"; id: string }
+  | { type: "mission"; occurrence: MissionOccurrenceItem }
+  | null;
 
 const LAB_COLOR = "#c8102e";
+const ASYNC_COLOR = "#0891b2";
+const MISSION_COLOR = "#16161d";
 const minutesOf = (b: { start: string; end: string }) => (new Date(b.end).getTime() - new Date(b.start).getTime()) / 60000;
 const isIn = (b: BookingItem, userId: string) => b.participants.some((p) => p.userId === userId);
 
-export function CalendarView({ me, users, projects, lab }: Props) {
+export function CalendarView({ me, users, projects, lab, reminders }: Props) {
   const isAdmin = me.role === "ADMIN";
   const calendarRef = useRef<FullCalendar>(null);
   const rangeRef = useRef<{ start: Date; end: Date } | null>(null);
   const [bookings, setBookings] = useState<BookingItem[]>([]);
+  const [missions, setMissions] = useState<MissionOccurrenceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -60,8 +70,9 @@ export function CalendarView({ me, users, projects, lab }: Props) {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ from: range.start.toISOString(), to: range.end.toISOString() });
-      const data = await api<{ bookings: BookingItem[] }>(`/api/calendar?${qs}`);
+      const data = await api<{ bookings: BookingItem[]; missions: MissionOccurrenceItem[] }>(`/api/calendar?${qs}`);
       setBookings(data.bookings);
+      setMissions(data.missions);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -84,7 +95,8 @@ export function CalendarView({ me, users, projects, lab }: Props) {
         (b) =>
           (!onlyMine || isIn(b, me.id)) &&
           (memberFilter === "all" || isIn(b, memberFilter)) &&
-          (projectFilter === "all" || (projectFilter === "lab" ? b.kind === "LAB" : b.projectId === projectFilter)),
+          (projectFilter === "all" ||
+            (projectFilter === "lab" ? b.kind === "LAB" : projectFilter === "async" ? b.kind === "ASYNC" : b.projectId === projectFilter)),
       ),
     [bookings, onlyMine, memberFilter, projectFilter, me.id],
   );
@@ -93,11 +105,14 @@ export function CalendarView({ me, users, projects, lab }: Props) {
     const out: EventInput[] = visible.map((b) => {
       const mine = isIn(b, me.id);
       const names = b.participants.map((p) => (p.userId === me.id ? "Tú" : p.user.name.split(" ")[0]));
-      const color = b.project?.color ?? LAB_COLOR;
+      const color = b.project?.color ?? (b.kind === "ASYNC" ? ASYNC_COLOR : LAB_COLOR);
+      const people = `${b.participants.length} ${b.participants.length === 1 ? "persona" : "personas"} (${names.join(", ")})`;
       const title =
-        b.kind === "PROJECT" && b.project
-          ? `${b.project.name} · ${b.participants.length} ${b.participants.length === 1 ? "persona" : "personas"} (${names.join(", ")})`
-          : `Lab · ${names.join(", ")}`;
+        b.kind === "ASYNC"
+          ? `🌐 Asíncrono${b.project ? ` · ${b.project.name}` : ""} · ${names.join(", ")}`
+          : b.kind === "PROJECT" && b.project
+            ? `${b.project.name} · ${people}`
+            : `Lab · ${names.join(", ")}`;
       return {
         id: b.id,
         start: b.start,
@@ -106,22 +121,38 @@ export function CalendarView({ me, users, projects, lab }: Props) {
         backgroundColor: mine ? color : `${color}26`,
         borderColor: color,
         textColor: mine ? "#fff" : "#27272a",
-        classNames: mine ? ["ev-mine"] : [],
+        classNames: [...(mine ? ["ev-mine"] : []), ...(b.kind === "ASYNC" ? ["ev-async"] : [])],
         editable: isAdmin || b.createdById === me.id,
         extendedProps: { booking: b },
       };
     });
 
+    for (const m of missions) {
+      out.push({
+        id: `mission:${m.missionId}:${m.start}`,
+        start: m.start,
+        end: m.end,
+        title: `⭐ ${m.title}`,
+        backgroundColor: MISSION_COLOR,
+        borderColor: MISSION_COLOR,
+        textColor: "#fff",
+        classNames: ["ev-mission"],
+        editable: false,
+        extendedProps: { mission: m },
+      });
+    }
+
     // Marca de fondo donde el lab ya está lleno (con todas las reservas, no sólo las filtradas).
     const step = lab.slotMinutes * 60000;
+    const inLab = bookings.filter((b) => b.kind !== "ASYNC");
     const points = new Set<number>();
-    for (const b of bookings) {
+    for (const b of inLab) {
       const s = Math.floor(new Date(b.start).getTime() / step) * step;
       for (let t = s; t < new Date(b.end).getTime(); t += step) points.add(t);
     }
     const full = [...points]
       .filter((t) => {
-        const people = bookings
+        const people = inLab
           .filter((b) => new Date(b.start).getTime() < t + step && new Date(b.end).getTime() > t)
           .reduce((acc, b) => acc + b.participants.length, 0);
         return people >= lab.capacity;
@@ -140,7 +171,7 @@ export function CalendarView({ me, users, projects, lab }: Props) {
       i = j + 1;
     }
     return out;
-  }, [visible, bookings, me.id, isAdmin, lab.capacity, lab.slotMinutes]);
+  }, [visible, bookings, missions, me.id, isAdmin, lab.capacity, lab.slotMinutes]);
 
   const myMinutes = useMemo(
     () => bookings.filter((b) => isIn(b, me.id)).reduce((acc, b) => acc + minutesOf(b), 0),
@@ -175,7 +206,9 @@ export function CalendarView({ me, users, projects, lab }: Props) {
 
   function onEventClick(arg: EventClickArg) {
     const booking = arg.event.extendedProps.booking as BookingItem | undefined;
+    const mission = arg.event.extendedProps.mission as MissionOccurrenceItem | undefined;
     if (booking) setDialog({ type: "booking", id: booking.id });
+    else if (mission) setDialog({ type: "mission", occurrence: mission });
   }
 
   async function onMoveOrResize(arg: EventDropArg | EventResizeDoneArg) {
@@ -209,6 +242,9 @@ export function CalendarView({ me, users, projects, lab }: Props) {
         </div>
         <div className="flex flex-wrap gap-3 text-sm">
           <button className="btn-primary" onClick={openQuickCreate}>+ Reservar horario</button>
+          <a className="btn-ghost" href="/api/me/export" download>
+            ⤓ Exportar a mi calendario
+          </a>
           <div className="card px-4 py-2">
             <div className="text-xs text-zinc-500">Tus horas en esta vista</div>
             <div className="font-semibold text-brand">{formatHours(Math.round(myMinutes))}</div>
@@ -222,6 +258,25 @@ export function CalendarView({ me, users, projects, lab }: Props) {
         </div>
       </div>
 
+      {reminders.length > 0 && (
+        <Link href="/misiones" className="card block border-amber-200 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100/60">
+          <div className="mb-1 font-semibold text-amber-900">⭐ Misiones generales</div>
+          <ul className="space-y-0.5 text-amber-900">
+            {reminders.map((r) => (
+              <li key={r.id}>
+                {r.pinned ? "📌 " : "• "}
+                {r.title}
+                {r.dueDate && (
+                  <span className="text-amber-700">
+                    {" "}— {new Date(r.dueDate).toLocaleDateString("es-MX", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Link>
+      )}
+
       <div className="card flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3 text-sm">
         <label className="inline-flex cursor-pointer select-none items-center gap-2">
           <input type="checkbox" className="accent-brand" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />
@@ -230,6 +285,12 @@ export function CalendarView({ me, users, projects, lab }: Props) {
         <span className="inline-flex items-center gap-2 text-zinc-500">
           <span className="inline-block h-3 w-3 rounded-sm" style={{ background: LAB_COLOR }} /> Contigo
           <span className="ml-2 inline-block h-3 w-3 rounded-sm border" style={{ background: `${LAB_COLOR}26`, borderColor: LAB_COLOR }} /> Otros
+          <span
+            className="ml-2 inline-block h-3 w-3 rounded-sm"
+            style={{ background: `repeating-linear-gradient(135deg, ${ASYNC_COLOR} 0 3px, #fff 3px 5px)` }}
+          />{" "}
+          Asíncrono
+          <span className="ml-2 inline-block h-3 w-3 rounded-sm" style={{ background: MISSION_COLOR }} /> Misión general
           <span className="ml-2 inline-block h-3 w-3 rounded-sm bg-red-200" /> Lab lleno
         </span>
         <div className="flex flex-wrap gap-2 sm:ml-auto">
@@ -242,6 +303,7 @@ export function CalendarView({ me, users, projects, lab }: Props) {
           <select className="input w-auto py-1.5" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
             <option value="all">Lab y proyectos</option>
             <option value="lab">Sólo lab</option>
+            <option value="async">Sólo asíncrono</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
@@ -302,6 +364,18 @@ export function CalendarView({ me, users, projects, lab }: Props) {
         </Modal>
       )}
 
+      {dialog?.type === "mission" && (
+        <Modal title={`⭐ ${dialog.occurrence.title}`} onClose={() => setDialog(null)}>
+          <p className="text-sm first-letter:uppercase">
+            {formatRange(new Date(dialog.occurrence.start), new Date(dialog.occurrence.end))}
+          </p>
+          <p className="mt-2 text-sm text-zinc-500">Sesión general recurrente definida por el admin.</p>
+          <div className="mt-5 flex justify-end">
+            <Link href="/misiones" className="btn-dark">Ver misiones generales</Link>
+          </div>
+        </Modal>
+      )}
+
       {selected && (
         <BookingDialog
           me={me}
@@ -323,7 +397,7 @@ function peakPeople(bookings: BookingItem[], target: BookingItem) {
   const s = new Date(target.start).getTime();
   const e = new Date(target.end).getTime();
   const events = bookings
-    .filter((b) => new Date(b.start).getTime() < e && new Date(b.end).getTime() > s)
+    .filter((b) => b.kind !== "ASYNC" && new Date(b.start).getTime() < e && new Date(b.end).getTime() > s)
     .flatMap((b) => [
       { t: Math.max(new Date(b.start).getTime(), s), d: b.participants.length },
       { t: Math.min(new Date(b.end).getTime(), e), d: -b.participants.length },
@@ -393,7 +467,11 @@ function BookingDialog(props: {
   }
 
   const title =
-    booking.kind === "PROJECT" && booking.project ? `Sesión de ${booking.project.name}` : "Reserva de lab";
+    booking.kind === "ASYNC"
+      ? `Trabajo asíncrono${booking.project ? ` · ${booking.project.name}` : ""}`
+      : booking.kind === "PROJECT" && booking.project
+        ? `Sesión de ${booking.project.name}`
+        : "Reserva de lab";
 
   if (editing) {
     return (
@@ -445,10 +523,14 @@ function BookingDialog(props: {
             ))}
           </div>
         </dd>
-        <dt className="text-zinc-500">Lab</dt>
-        <dd className={props.occupancy >= props.capacity ? "font-medium text-red-700" : ""}>
-          {props.occupancy} de {props.capacity} personas en el momento más lleno
-        </dd>
+        {booking.kind !== "ASYNC" && (
+          <>
+            <dt className="text-zinc-500">Lab</dt>
+            <dd className={props.occupancy >= props.capacity ? "font-medium text-red-700" : ""}>
+              {props.occupancy} de {props.capacity} personas en el momento más lleno
+            </dd>
+          </>
+        )}
         {booking.notes && (
           <>
             <dt className="text-zinc-500">Notas</dt>

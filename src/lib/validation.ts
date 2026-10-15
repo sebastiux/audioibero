@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const dateTime = z.coerce.date({ error: "Fecha inválida" });
 export const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa el formato AAAA-MM-DD");
-export const slotKind = z.enum(["LAB", "PROJECT"]);
+export const slotKind = z.enum(["LAB", "PROJECT", "ASYNC"]);
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email("Correo inválido"),
@@ -91,4 +91,47 @@ export const userCreateSchema = z.object({
   email: z.string().trim().toLowerCase().email("Correo inválido"),
   password: z.string().min(8, "La contraseña temporal debe tener al menos 8 caracteres").max(200),
   role: z.enum(["MEMBER", "ADMIN"]).default("MEMBER"),
+});
+
+const minuteOfDay = z.number().int().min(0).max(1440);
+
+export const missionSchema = z
+  .object({
+    title: z.string().trim().min(2, "Escribe un título").max(140),
+    description: z.string().trim().max(4000).nullish(),
+    type: z.enum(["REMINDER", "RECURRING"]),
+    pinned: z.boolean().default(false),
+    active: z.boolean().default(true),
+    dueDate: dateTime.nullish(),
+    weekdays: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+    startMinute: minuteOfDay.nullish(),
+    endMinute: minuteOfDay.nullish(),
+    startsOn: dateTime.nullish(),
+    endsOn: dateTime.nullish(),
+    kind: z.enum(["LAB", "ASYNC"]).default("LAB"),
+  })
+  .superRefine((m, ctx) => {
+    if (m.type !== "RECURRING") return;
+    if (m.weekdays.length === 0) ctx.addIssue({ code: "custom", path: ["weekdays"], message: "Elige al menos un día" });
+    if (m.startMinute == null || m.endMinute == null || m.endMinute <= m.startMinute) {
+      ctx.addIssue({ code: "custom", path: ["endMinute"], message: "La hora de fin debe ser posterior a la de inicio" });
+    }
+    if (m.startsOn && m.endsOn && m.endsOn < m.startsOn) {
+      ctx.addIssue({ code: "custom", path: ["endsOn"], message: "La vigencia termina antes de empezar" });
+    }
+  });
+
+export const planProposeSchema = z.object({
+  from: dateKey,
+  to: dateKey,
+  weeklyHours: z.number().min(0.5).max(80),
+  blockMinutes: z.number().int().min(30).max(480),
+  kind: slotKind.default("LAB"),
+});
+
+export const planApplySchema = z.object({
+  kind: slotKind.default("LAB"),
+  projectId: z.string().min(1).nullish(),
+  notes: z.string().trim().max(500).nullish(),
+  blocks: z.array(z.object({ start: dateTime, end: dateTime })).min(1).max(100),
 });
