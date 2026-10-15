@@ -24,19 +24,16 @@ const slotBase = {
   notes: z.string().trim().max(500).nullish(),
 };
 
-export const availabilityCreateSchema = z.object({
+export const bookingCreateSchema = z.object({
   ...slotBase,
-  userId: z.string().min(1).optional(), // sólo admin puede crear para otra persona
+  /** Sólo admin: a quién(es) se asigna la reserva. Un miembro siempre reserva para sí mismo. */
+  participantIds: z.array(z.string().min(1)).max(100).optional(),
 });
 
-export const availabilityUpdateSchema = z.object(slotBase).partial();
-
-export const assignmentCreateSchema = z.object({
-  ...slotBase,
-  userId: z.string().min(1),
-});
-
-export const assignmentUpdateSchema = z.object({ ...slotBase, userId: z.string().min(1) }).partial();
+export const bookingUpdateSchema = z
+  .object(slotBase)
+  .partial()
+  .extend({ participantIds: z.array(z.string().min(1)).max(100).optional() });
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color inválido");
 
@@ -66,8 +63,9 @@ export const settingsSchema = z
     closeMinute: z.number().int().min(0).max(1440),
     openDays: z.array(z.number().int().min(0).max(6)).min(1, "Elige al menos un día"),
     slotMinutes: z.union([z.literal(15), z.literal(30), z.literal(60)]),
-    minSessionMinutes: z.number().int().min(15).max(720),
     maxWeeklyMinutes: z.number().int().min(30).max(10080),
+    projectWeeklyMinutes: z.number().int().min(0).max(10080),
+    projectSessionMinutes: z.number().int().min(30).max(720),
   })
   .refine((s) => s.closeMinute > s.openMinute, { message: "El cierre debe ser después de la apertura", path: ["closeMinute"] });
 
@@ -78,15 +76,14 @@ export const applySchema = z.object({
   proposals: z
     .array(
       z.object({
-        userId: z.string().min(1),
+        projectId: z.string().min(1),
         start: dateTime,
         end: dateTime,
-        kind: slotKind,
-        projectId: z.string().min(1).nullable(),
+        participantIds: z.array(z.string().min(1)).min(1).max(100),
         reason: z.string().max(200).optional(),
       }),
     )
-    .max(2000),
+    .max(1000),
 });
 
 export const userCreateSchema = z.object({

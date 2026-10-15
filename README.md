@@ -1,6 +1,6 @@
 # Club de Audio Ibero · Organizador del lab
 
-Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero. El centro es un **calendario** donde cada miembro marca cuándo está disponible para trabajar en el lab o en un proyecto de equipo. Los admins asignan días y generan un **calendario recomendado**.
+Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero. Todos los miembros están disponibles por defecto: el centro es un **calendario de reservas** donde cada quien registra las horas a las que va a ir al lab, y donde se forman grupos simultáneos. En una sesión de proyecto, los demás integrantes se unen al mismo horario con un clic. Los admins asignan horarios, dan de alta proyectos y generan un **calendario recomendado**.
 
 **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Prisma + PostgreSQL · Tailwind CSS 4 · FullCalendar · sesiones JWT (jose) en cookie httpOnly · Zod · Vitest.
 
@@ -8,25 +8,21 @@ Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero
 
 | Acción | Miembro | Admin |
 | --- | :---: | :---: |
-| Ver el calendario del club (espacios libres y asignaciones) | ✅ | ✅ |
-| Crear espacios libres propios (lab o proyecto) | ✅ | ✅ (para cualquiera) |
-| Modificar sus espacios libres (formulario o arrastrando) | ✅ | ✅ (cualquiera) |
-| Eliminar espacios libres | — | ✅ |
-| Asignar días/horarios a miembros (manual o desde un espacio libre) | — | ✅ |
+| Ver el calendario del club (quién va, cuándo y si el lab está lleno) | ✅ | ✅ |
+| Reservar horas en el lab o abrir una sesión de proyecto | ✅ | ✅ (para cualquiera) |
+| Unirse a una reserva existente / salirse | ✅ | ✅ |
+| Mover o editar sus reservas (formulario o arrastrando) | ✅ (las que creó) | ✅ (cualquiera) |
+| Eliminar reservas completas | — | ✅ |
+| Asignar horarios a miembros y cambiar participantes | — | ✅ |
 | Dar de alta, editar y archivar proyectos y sus integrantes | — | ✅ |
 | Generar y aplicar el calendario recomendado | — | ✅ |
-| Gestionar miembros (alta, perfil, desactivar) y las reglas del lab | — | ✅ |
+| Gestionar miembros (alta, perfil, desactivar), ver horas por semana y reglas del lab | — | ✅ |
 
-Los miembros sólo pueden marcar disponibilidad de **proyecto** en los proyectos a los que pertenecen.
+Reglas: nadie puede estar en dos reservas que se crucen; la suma de personas en el lab nunca pasa el cupo (el admin puede forzarlo); a las sesiones de un proyecto sólo se unen sus integrantes. Si el último participante se sale, la reserva desaparece.
 
 ## Calendario recomendado
 
-En `/admin/recomendado` el admin elige un periodo y la app arma una propuesta, que puede revisar (y quitar horarios) antes de aplicarla:
-
-1. **Sesiones de equipo:** por cada proyecto activo busca ventanas en las que coinciden suficientes integrantes (al menos 2, o la mitad del equipo) y los agenda juntos.
-2. **Uso libre del lab:** reparte los espacios libres tipo “lab” dando prioridad a quien lleva menos horas esa semana.
-
-Siempre respeta el cupo simultáneo del lab, el horario y los días de apertura, la duración mínima de sesión, el tope semanal por persona y las asignaciones manuales existentes. Al aplicar puede reemplazar las asignaciones recomendadas anteriores del mismo periodo (las manuales nunca se tocan). Estas reglas se ajustan en `/admin/miembros`.
+En `/admin/recomendado` el admin elige un periodo y la app propone **sesiones de equipo** para cada proyecto activo (por defecto 4 h a la semana en bloques de 2 h). Busca horarios en los que los integrantes no tengan otras reservas (si no caben todos, al menos la mitad del equipo), repartidos en días distintos y en las horas menos ocupadas del lab, respetando cupo, horario, días de apertura y el tope semanal por persona. Las sesiones de proyecto que ya existan cuentan para la meta. Se pueden quitar sesiones de la propuesta antes de aplicarla; al aplicar puede reemplazar las recomendadas anteriores del periodo (las manuales nunca se tocan). Las reglas se ajustan en `/admin/miembros`.
 
 El algoritmo vive en `src/lib/scheduler.ts` (función pura con pruebas en `scheduler.test.ts`).
 
@@ -59,7 +55,7 @@ El seed es idempotente: si el admin ya existe no cambia su contraseña. Para res
 ## Estructura
 
 ```
-prisma/schema.prisma        Modelos: User, Project, ProjectMember, Availability, Assignment, LabSettings
+prisma/schema.prisma        Modelos: User, Project, ProjectMember, Booking, BookingParticipant, LabSettings
 src/lib/scheduler.ts        Algoritmo del calendario recomendado
 src/lib/rules.ts            Reglas de negocio (validación de horarios, choques, cupo)
 src/app/api/**              API REST (route handlers) con control de permisos por perfil

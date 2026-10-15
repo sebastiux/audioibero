@@ -42,7 +42,7 @@ export function ProjectsManager({ me, projects, users }: { me: Me; projects: Pro
         <div>
           <h1 className="text-2xl font-bold">Proyectos</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Proyectos de equipo del club. Marca disponibilidad tipo “Proyecto” en el calendario para coincidir con tu equipo.
+            Proyectos de equipo del club. Abre una sesión de proyecto en el calendario y tu equipo podrá unirse al mismo horario.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -158,7 +158,7 @@ function ProjectDialog({
   }
 
   async function remove() {
-    if (!project || !confirm(`¿Eliminar "${project.name}"? Sus asignaciones quedarán como trabajo de lab.`)) return;
+    if (!project || !confirm(`¿Eliminar "${project.name}"? Sus reservas quedarán como trabajo de lab.`)) return;
     try {
       await api(`/api/projects/${project.id}`, { method: "DELETE" });
       onSaved();

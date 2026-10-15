@@ -17,51 +17,59 @@ export function rangeBounds(fromKey: string, toKey: string) {
 /** Arma el calendario recomendado con los datos actuales de la BD (no guarda nada). */
 export async function buildRecommendation(fromKey: string, toKey: string, replaceRecommended: boolean) {
   const { start, end, tz } = rangeBounds(fromKey, toKey);
-  const overlap = { start: { lt: end }, end: { gt: start } };
+  // Se amplía una semana hacia cada lado para contar bien el tope semanal y las sesiones existentes.
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const wideStart = new Date(start.getTime() - week);
+  const wideEnd = new Date(end.getTime() + week);
 
-  const [settings, availabilities, projects, existing, users] = await Promise.all([
+  const [settings, projects, existing, users] = await Promise.all([
     getSettings(),
-    prisma.availability.findMany({ where: { ...overlap, user: { active: true } } }),
-    prisma.project.findMany({ where: { active: true }, include: { members: { select: { userId: true } } } }),
-    prisma.assignment.findMany({
-      where: { ...overlap, ...(replaceRecommended ? { source: "MANUAL" as const } : {}) },
-      select: { userId: true, start: true, end: true },
+    prisma.project.findMany({
+      where: { active: true },
+      include: { members: { where: { user: { active: true } }, select: { userId: true } } },
+    }),
+    prisma.booking.findMany({
+      where: {
+        start: { lt: wideEnd },
+        end: { gt: wideStart },
+        // Las recomendadas previas del periodo se reemplazarán: no cuentan.
+        ...(replaceRecommended
+          ? { NOT: { source: "RECOMMENDED" as const, start: { lt: end }, end: { gt: start } } }
+          : {}),
+      },
+      select: { start: true, end: true, projectId: true, participants: { select: { userId: true } } },
     }),
     prisma.user.findMany({ select: { id: true, name: true } }),
   ]);
 
-  const activeProjectIds = new Set(projects.map((p) => p.id));
   const result = recommendSchedule({
     fromKey,
     toKey,
     timeZone: tz,
     settings,
-    existing,
     projects: projects.map((p) => ({ id: p.id, name: p.name, memberIds: p.members.map((m) => m.userId) })),
-    availabilities: availabilities.map((a) => ({
-      id: a.id,
-      userId: a.userId,
-      start: a.start,
-      end: a.end,
-      kind: a.kind,
-      projectId: a.projectId && activeProjectIds.has(a.projectId) ? a.projectId : null,
+    existing: existing.map((b) => ({
+      start: b.start,
+      end: b.end,
+      projectId: b.projectId,
+      participantIds: b.participants.map((p) => p.userId),
     })),
   });
 
   const userName = new Map(users.map((u) => [u.id, u.name]));
-  const project = new Map(projects.map((p) => [p.id, { name: p.name, color: p.color }]));
+  const projectInfo = new Map(projects.map((p) => [p.id, { name: p.name, color: p.color }]));
+  const missing = new Map<string, number>();
+  for (const s of result.shortfall) missing.set(s.projectId, (missing.get(s.projectId) ?? 0) + s.missingMinutes);
+
   return {
     settings,
+    projectsWithoutMembers: projects.filter((p) => p.members.length === 0).map((p) => p.name),
     proposals: result.proposals.map((p) => ({
       ...p,
-      userName: userName.get(p.userId) ?? "—",
-      projectName: p.projectId ? (project.get(p.projectId)?.name ?? null) : null,
-      projectColor: p.projectId ? (project.get(p.projectId)?.color ?? null) : null,
+      participants: p.participantIds.map((id) => ({ id, name: userName.get(id) ?? "—" })),
+      projectName: projectInfo.get(p.projectId)?.name ?? "—",
+      projectColor: projectInfo.get(p.projectId)?.color ?? "#7c3aed",
     })),
-    stats: Object.entries(result.minutesByUser)
-      .map(([userId, minutes]) => ({ userId, name: userName.get(userId) ?? "—", minutes }))
-      .sort((a, b) => b.minutes - a.minutes),
-    totalAvailabilities: availabilities.length,
-    unassignedCount: result.unassignedAvailabilityIds.length,
+    shortfall: [...missing].map(([projectId, minutes]) => ({ projectName: projectInfo.get(projectId)?.name ?? "—", minutes })),
   };
 }

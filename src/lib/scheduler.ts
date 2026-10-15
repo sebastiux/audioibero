@@ -3,25 +3,14 @@ import { addDaysToKey, fromLocal, toLocalParts, weekKeyOf, weekdayOfKey } from "
 /**
  * Generador del calendario recomendado.
  *
- * Trabaja en "slots" discretos (p. ej. 30 min) dentro del horario del lab, en la zona horaria local.
- *  1. Sesiones de proyecto: busca ventanas en las que coinciden suficientes integrantes de un
- *     proyecto (disponibilidad tipo PROJECT) y los asigna juntos.
- *  2. Uso libre del lab: reparte la disponibilidad tipo LAB priorizando a quien lleva menos
- *     minutos asignados en la semana (reparto equitativo), respetando el cupo del lab.
- * Siempre respeta: cupo simultáneo, horario/días de apertura, duración mínima de sesión,
- * tope semanal por miembro y las asignaciones que ya existen.
+ * Todos los miembros están disponibles por defecto; lo que limita son las reservas que ya
+ * existen y el cupo del lab. Para cada proyecto activo propone sesiones de equipo hasta cubrir
+ * las horas semanales configuradas:
+ *  - en horario y días de apertura, sin rebasar el cupo simultáneo del lab,
+ *  - sin cruzarse con reservas de los integrantes (si no caben todos, al menos la mitad del equipo),
+ *  - repartidas en días distintos y en las horas menos ocupadas del lab,
+ *  - sin pasar el tope semanal de horas de cada integrante.
  */
-
-export type SlotKind = "LAB" | "PROJECT";
-
-export type SchedulerAvailability = {
-  id: string;
-  userId: string;
-  start: Date;
-  end: Date;
-  kind: SlotKind;
-  projectId: string | null;
-};
 
 export type SchedulerProject = {
   id: string;
@@ -35,22 +24,23 @@ export type SchedulerSettings = {
   closeMinute: number;
   openDays: number[];
   slotMinutes: number;
-  minSessionMinutes: number;
   maxWeeklyMinutes: number;
+  projectWeeklyMinutes: number;
+  projectSessionMinutes: number;
 };
 
-export type ExistingAssignment = {
-  userId: string;
+export type ExistingBooking = {
   start: Date;
   end: Date;
+  participantIds: string[];
+  projectId?: string | null;
 };
 
 export type Proposal = {
-  userId: string;
+  projectId: string;
   start: Date;
   end: Date;
-  kind: SlotKind;
-  projectId: string | null;
+  participantIds: string[];
   reason: string;
 };
 
@@ -61,34 +51,23 @@ export type RecommendInput = {
   toKey: string;
   timeZone: string;
   settings: SchedulerSettings;
-  availabilities: SchedulerAvailability[];
   projects: SchedulerProject[];
-  existing?: ExistingAssignment[];
+  existing?: ExistingBooking[];
 };
 
 export type RecommendResult = {
   proposals: Proposal[];
   /** Minutos propuestos por miembro (sólo lo nuevo) */
   minutesByUser: Record<string, number>;
-  /** Disponibilidades que no recibieron ningún horario */
-  unassignedAvailabilityIds: string[];
-};
-
-type Segment = {
-  availabilityId: string;
-  userId: string;
-  dayKey: string;
-  startSlot: number;
-  endSlot: number; // exclusivo
-  kind: SlotKind;
-  projectId: string | null;
+  /** Proyectos a los que no se les pudo cubrir todo el tiempo pedido: minutos faltantes */
+  shortfall: { projectId: string; missingMinutes: number }[];
 };
 
 export function recommendSchedule(input: RecommendInput): RecommendResult {
   const { settings, timeZone } = input;
   const slot = settings.slotMinutes;
   const nSlots = Math.floor((settings.closeMinute - settings.openMinute) / slot);
-  const minSlots = Math.max(1, Math.ceil(settings.minSessionMinutes / slot));
+  const sessionSlots = Math.max(1, Math.round(settings.projectSessionMinutes / slot));
   const openDays = new Set(settings.openDays);
 
   const days: string[] = [];
@@ -97,11 +76,10 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
   }
   const daySet = new Set(days);
 
-  // Estado: ocupación del lab por slot, slots ocupados por usuario y minutos por semana.
-  const load = new Map<string, number[]>();
-  for (const d of days) load.set(d, new Array(nSlots).fill(0));
-  const busy = new Map<string, Set<number>>(); // `${userId}|${dayKey}` -> slots
+  const load = new Map<string, number[]>(days.map((d) => [d, new Array(nSlots).fill(0)]));
+  const busy = new Map<string, Set<number>>(); // `${userId}|${dayKey}` -> slots ocupados
   const weekly = new Map<string, number>(); // `${userId}|${weekKey}` -> minutos
+  const projectDays = new Map<string, Map<string, number>>(); // projectId -> dayKey -> sesiones
 
   const busySet = (userId: string, dayKey: string) => {
     const key = `${userId}|${dayKey}`;
@@ -109,226 +87,122 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
     if (!s) busy.set(key, (s = new Set()));
     return s;
   };
-  const weeklyMinutes = (userId: string, dayKey: string) => weekly.get(`${userId}|${weekKeyOf(dayKey)}`) ?? 0;
-  const addWeekly = (userId: string, dayKey: string, minutes: number) => {
-    const key = `${userId}|${weekKeyOf(dayKey)}`;
+  const weeklyMinutes = (userId: string, weekKey: string) => weekly.get(`${userId}|${weekKey}`) ?? 0;
+  const addWeekly = (userId: string, weekKey: string, minutes: number) => {
+    const key = `${userId}|${weekKey}`;
     weekly.set(key, (weekly.get(key) ?? 0) + minutes);
   };
-
-  // Convierte un intervalo real a segmentos de slots por día (recortado al horario del lab).
-  const toSegments = (start: Date, end: Date): { dayKey: string; startSlot: number; endSlot: number }[] => {
-    const out: { dayKey: string; startSlot: number; endSlot: number }[] = [];
-    const s = toLocalParts(start, timeZone);
-    const e = toLocalParts(end, timeZone);
-    for (let k = s.dateKey; k <= e.dateKey; k = addDaysToKey(k, 1)) {
-      if (!daySet.has(k)) continue;
-      const startMin = k === s.dateKey ? s.minutes : 0;
-      const endMin = k === e.dateKey ? e.minutes : 1440;
-      const from = Math.max(startMin, settings.openMinute);
-      const to = Math.min(endMin, settings.closeMinute);
-      if (to <= from) continue;
-      const startSlot = Math.ceil((from - settings.openMinute) / slot);
-      const endSlot = Math.min(nSlots, Math.floor((to - settings.openMinute) / slot));
-      if (endSlot > startSlot) out.push({ dayKey: k, startSlot, endSlot });
-    }
-    return out;
+  const markProjectDay = (projectId: string, dayKey: string) => {
+    const m = projectDays.get(projectId) ?? new Map<string, number>();
+    m.set(dayKey, (m.get(dayKey) ?? 0) + 1);
+    projectDays.set(projectId, m);
   };
 
-  // Asignaciones existentes: cuentan para el cupo, los choques y el tope semanal.
-  for (const a of input.existing ?? []) {
-    for (const seg of toSegments(a.start, a.end)) {
-      const l = load.get(seg.dayKey)!;
-      const b = busySet(a.userId, seg.dayKey);
-      for (let i = seg.startSlot; i < seg.endSlot; i++) {
-        l[i]++;
-        b.add(i);
+  // Reservas existentes: ocupan cupo, bloquean a sus participantes y cuentan para el tope semanal.
+  for (const b of input.existing ?? []) {
+    const s = toLocalParts(b.start, timeZone);
+    const e = toLocalParts(b.end, timeZone);
+    for (let k = s.dateKey; k <= e.dateKey; k = addDaysToKey(k, 1)) {
+      const startMin = k === s.dateKey ? s.minutes : 0;
+      const endMin = k === e.dateKey ? e.minutes : 1440;
+      const minutes = Math.max(0, endMin - startMin);
+      for (const u of b.participantIds) addWeekly(u, weekKeyOf(k), minutes);
+      if (!daySet.has(k)) continue;
+      // Cualquier traslape con un slot lo ocupa (redondeo hacia afuera).
+      const from = Math.max(0, Math.floor((startMin - settings.openMinute) / slot));
+      const to = Math.min(nSlots, Math.ceil((endMin - settings.openMinute) / slot));
+      const l = load.get(k)!;
+      for (let i = from; i < to; i++) {
+        l[i] += b.participantIds.length;
+        for (const u of b.participantIds) busySet(u, k).add(i);
       }
-      addWeekly(a.userId, seg.dayKey, (seg.endSlot - seg.startSlot) * slot);
-    }
-  }
-
-  const segments: Segment[] = [];
-  for (const av of input.availabilities) {
-    const kind: SlotKind = av.kind === "PROJECT" && av.projectId ? "PROJECT" : "LAB";
-    for (const seg of toSegments(av.start, av.end)) {
-      segments.push({
-        availabilityId: av.id,
-        userId: av.userId,
-        kind,
-        projectId: kind === "PROJECT" ? av.projectId : null,
-        ...seg,
-      });
+      if (b.projectId) markProjectDay(b.projectId, k);
     }
   }
 
   const proposals: Proposal[] = [];
   const minutesByUser: Record<string, number> = {};
-  const servedAvailability = new Set<string>();
+  const shortfall: RecommendResult["shortfall"] = [];
+  const sessionMinutes = sessionSlots * slot;
 
-  const commit = (
-    seg: Pick<Segment, "userId" | "dayKey" | "kind" | "projectId">,
-    from: number,
-    to: number,
-    reason: string,
-    sourceIds: string[],
-  ) => {
-    const l = load.get(seg.dayKey)!;
-    const b = busySet(seg.userId, seg.dayKey);
-    for (let i = from; i < to; i++) {
-      l[i]++;
-      b.add(i);
-    }
-    const minutes = (to - from) * slot;
-    addWeekly(seg.userId, seg.dayKey, minutes);
-    minutesByUser[seg.userId] = (minutesByUser[seg.userId] ?? 0) + minutes;
-    for (const id of sourceIds) servedAvailability.add(id);
-    proposals.push({
-      userId: seg.userId,
-      start: fromLocal(seg.dayKey, settings.openMinute + from * slot, timeZone),
-      end: fromLocal(seg.dayKey, settings.openMinute + to * slot, timeZone),
-      kind: seg.kind,
-      projectId: seg.projectId,
-      reason,
-    });
-  };
-
-  /** Recorta un bloque [from,to) al tope semanal restante; null si queda más corto que la sesión mínima. */
-  const fitWeekly = (userId: string, dayKey: string, from: number, to: number): [number, number] | null => {
-    const remaining = settings.maxWeeklyMinutes - weeklyMinutes(userId, dayKey);
-    const maxSlots = Math.floor(remaining / slot);
-    const end = Math.min(to, from + maxSlots);
-    return end - from >= minSlots ? [from, end] : null;
-  };
-
-  // ---------- Fase 1: sesiones de proyecto ----------
-  const projectsById = new Map(input.projects.map((p) => [p.id, p]));
-  const projectSegments = new Map<string, Segment[]>();
-  for (const seg of segments) {
-    if (seg.kind !== "PROJECT" || !seg.projectId || !projectsById.has(seg.projectId)) continue;
-    const list = projectSegments.get(seg.projectId) ?? [];
-    list.push(seg);
-    projectSegments.set(seg.projectId, list);
+  // Agrupa los días por semana para repartir las horas semanales de cada proyecto.
+  const weeks = new Map<string, string[]>();
+  for (const d of days) {
+    const w = weekKeyOf(d);
+    weeks.set(w, [...(weeks.get(w) ?? []), d]);
   }
 
-  // Proyectos con más gente primero: son los más difíciles de cuadrar.
-  const orderedProjects = [...projectSegments.keys()].sort(
-    (a, b) => new Set(projectSegments.get(b)!.map((s) => s.userId)).size - new Set(projectSegments.get(a)!.map((s) => s.userId)).size,
-  );
+  // Proyectos con más integrantes primero: son los más difíciles de cuadrar.
+  const projects = input.projects
+    .filter((p) => p.memberIds.length > 0)
+    .sort((a, b) => b.memberIds.length - a.memberIds.length);
 
-  for (const projectId of orderedProjects) {
-    const project = projectsById.get(projectId)!;
-    const segs = projectSegments.get(projectId)!;
-    const participants = new Set([...project.memberIds, ...segs.map((s) => s.userId)]);
-    const teamSize = participants.size;
-    const minTeam = teamSize <= 1 ? 1 : Math.min(teamSize, Math.max(2, Math.ceil(teamSize / 2)));
+  for (const project of projects) {
+    const team = project.memberIds;
+    const minTeam = team.length === 1 ? 1 : Math.max(2, Math.ceil(team.length / 2));
 
-    for (const dayKey of days) {
-      const daySegs = segs.filter((s) => s.dayKey === dayKey);
-      if (daySegs.length === 0) continue;
-      const l = load.get(dayKey)!;
+    for (const [weekKey, weekDays] of weeks) {
+      // Sesiones que ya existen esta semana para el proyecto cuentan para la meta.
+      let missing = settings.projectWeeklyMinutes;
+      for (const d of weekDays) missing -= (projectDays.get(project.id)?.get(d) ?? 0) * sessionMinutes;
 
-      // Por slot: quién está disponible (y libre) para este proyecto.
-      const availableAt: string[][] = Array.from({ length: nSlots }, () => []);
-      const sourceIdsByUser = new Map<string, Set<string>>();
-      for (const s of daySegs) {
-        const b = busySet(s.userId, dayKey);
-        for (let i = s.startSlot; i < s.endSlot; i++) {
-          if (!b.has(i) && !availableAt[i].includes(s.userId)) availableAt[i].push(s.userId);
-        }
-        const ids = sourceIdsByUser.get(s.userId) ?? new Set();
-        ids.add(s.availabilityId);
-        sourceIdsByUser.set(s.userId, ids);
-      }
+      while (missing > 0) {
+        let best: { day: string; start: number; members: string[]; score: number } | null = null;
 
-      // Selección por slot respetando cupo (prioriza a quien lleva menos minutos esta semana).
-      const chosenAt: Set<string>[] = availableAt.map((users, i) => {
-        const free = settings.capacity - l[i];
-        if (users.length < minTeam || free < minTeam) return new Set<string>();
-        const ordered = [...users].sort((a, b) => weeklyMinutes(a, dayKey) - weeklyMinutes(b, dayKey));
-        return new Set(ordered.slice(0, free));
-      });
-
-      // Ventanas continuas con equipo suficiente y duración mínima.
-      let i = 0;
-      while (i < nSlots) {
-        if (chosenAt[i].size < minTeam) {
-          i++;
-          continue;
-        }
-        let j = i;
-        while (j < nSlots && chosenAt[j].size >= minTeam) j++;
-        if (j - i >= minSlots) {
-          const windowUsers = new Set<string>();
-          for (let k = i; k < j; k++) chosenAt[k].forEach((u) => windowUsers.add(u));
-          const label = `Sesión de equipo: ${project.name}`;
-          for (const userId of windowUsers) {
-            // Bloques continuos del usuario dentro de la ventana.
-            let k = i;
-            while (k < j) {
-              if (!chosenAt[k].has(userId)) {
-                k++;
-                continue;
-              }
-              let m = k;
-              while (m < j && chosenAt[m].has(userId)) m++;
-              const fit = fitWeekly(userId, dayKey, k, m);
-              if (fit) {
-                commit({ userId, dayKey, kind: "PROJECT", projectId }, fit[0], fit[1], label, [
-                  ...(sourceIdsByUser.get(userId) ?? []),
-                ]);
-              }
-              k = m;
+        for (const day of weekDays) {
+          const l = load.get(day)!;
+          const sessionsThatDay = projectDays.get(project.id)?.get(day) ?? 0;
+          for (let start = 0; start + sessionSlots <= nSlots; start++) {
+            const members = team.filter((u) => {
+              if (weeklyMinutes(u, weekKey) + sessionMinutes > settings.maxWeeklyMinutes) return false;
+              const b = busySet(u, day);
+              for (let i = start; i < start + sessionSlots; i++) if (b.has(i)) return false;
+              return true;
+            });
+            if (members.length < minTeam) continue;
+            let peak = 0;
+            let total = 0;
+            for (let i = start; i < start + sessionSlots; i++) {
+              peak = Math.max(peak, l[i]);
+              total += l[i];
             }
+            if (peak + members.length > settings.capacity) continue;
+            // Menor puntaje = mejor: más integrantes, días sin sesión del proyecto, lab menos lleno, más temprano.
+            const score = -members.length * 1000 + sessionsThatDay * 500 + total * 10 + start * 0.01;
+            if (!best || score < best.score) best = { day, start, members, score };
           }
         }
-        i = j;
+
+        if (!best) break;
+
+        const { day, start, members } = best;
+        const l = load.get(day)!;
+        for (let i = start; i < start + sessionSlots; i++) {
+          l[i] += members.length;
+          for (const u of members) busySet(u, day).add(i);
+        }
+        for (const u of members) {
+          addWeekly(u, weekKey, sessionMinutes);
+          minutesByUser[u] = (minutesByUser[u] ?? 0) + sessionMinutes;
+        }
+        markProjectDay(project.id, day);
+        proposals.push({
+          projectId: project.id,
+          start: fromLocal(day, settings.openMinute + start * slot, timeZone),
+          end: fromLocal(day, settings.openMinute + (start + sessionSlots) * slot, timeZone),
+          participantIds: members,
+          reason:
+            members.length === team.length
+              ? `Sesión de equipo: ${project.name}`
+              : `Sesión de equipo: ${project.name} (${members.length} de ${team.length} integrantes libres)`,
+        });
+        missing -= sessionMinutes;
       }
+
+      if (missing > 0) shortfall.push({ projectId: project.id, missingMinutes: missing });
     }
   }
 
-  // ---------- Fase 2: uso libre del lab (reparto equitativo) ----------
-  // Las disponibilidades de proyecto que no formaron sesión también pueden usarse como tiempo de lab.
-  const pending = segments
-    .filter((s) => s.kind === "LAB" || !servedAvailability.has(s.availabilityId))
-    .sort((a, b) => (a.dayKey === b.dayKey ? a.startSlot - b.startSlot : a.dayKey < b.dayKey ? -1 : 1));
-
-  while (pending.length > 0) {
-    // Siguiente: el miembro con menos minutos en la semana de ese segmento; empate → más temprano.
-    let best = 0;
-    for (let k = 1; k < pending.length; k++) {
-      const a = pending[k];
-      const b = pending[best];
-      const wa = weeklyMinutes(a.userId, a.dayKey);
-      const wb = weeklyMinutes(b.userId, b.dayKey);
-      if (wa < wb) best = k;
-    }
-    const seg = pending.splice(best, 1)[0];
-    const l = load.get(seg.dayKey)!;
-    const b = busySet(seg.userId, seg.dayKey);
-
-    let i = seg.startSlot;
-    while (i < seg.endSlot) {
-      if (l[i] >= settings.capacity || b.has(i)) {
-        i++;
-        continue;
-      }
-      let j = i;
-      while (j < seg.endSlot && l[j] < settings.capacity && !b.has(j)) j++;
-      const fit = fitWeekly(seg.userId, seg.dayKey, i, j);
-      if (fit) {
-        const reason =
-          seg.kind === "PROJECT" ? "Trabajo individual de proyecto en el lab" : "Uso libre del laboratorio";
-        commit(seg, fit[0], fit[1], reason, [seg.availabilityId]);
-      }
-      i = j;
-    }
-  }
-
-  proposals.sort((a, b) => a.start.getTime() - b.start.getTime() || a.userId.localeCompare(b.userId));
-
-  return {
-    proposals,
-    minutesByUser,
-    unassignedAvailabilityIds: input.availabilities.map((a) => a.id).filter((id) => !servedAvailability.has(id)),
-  };
+  proposals.sort((a, b) => a.start.getTime() - b.start.getTime());
+  return { proposals, minutesByUser, shortfall };
 }

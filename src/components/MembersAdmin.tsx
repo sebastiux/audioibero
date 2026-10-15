@@ -21,11 +21,13 @@ type Settings = {
   closeMinute: number;
   openDays: number[];
   slotMinutes: number;
-  minSessionMinutes: number;
   maxWeeklyMinutes: number;
+  projectWeeklyMinutes: number;
+  projectSessionMinutes: number;
 };
 
 export function MembersAdmin({ meId, users, settings }: { meId: string; users: UserRow[]; settings: Settings }) {
+  const maxWeekly = settings.maxWeeklyMinutes;
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -46,7 +48,7 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">Miembros</h1>
-            <p className="mt-1 text-sm text-zinc-500">{users.filter((u) => u.active).length} activos · horas asignadas esta semana</p>
+            <p className="mt-1 text-sm text-zinc-500">{users.filter((u) => u.active).length} activos · horas reservadas esta semana</p>
           </div>
           <div className="flex gap-2">
             <input className="input w-48" placeholder="Buscar…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -81,7 +83,10 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
                       <option value="ADMIN">Admin</option>
                     </select>
                   </td>
-                  <td className="px-4 py-3">{formatHours(u.weekMinutes)}</td>
+                  <td className={`px-4 py-3 ${u.weekMinutes > maxWeekly ? "font-semibold text-red-700" : ""}`}>
+                    {formatHours(u.weekMinutes)}
+                    {u.weekMinutes > maxWeekly && <span className="ml-1 text-xs">(sobre el tope)</span>}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <button className="btn-ghost py-1" disabled={u.id === meId} onClick={() => update(u.id, { active: !u.active })}>
                       {u.active ? "Desactivar" : "Reactivar"}
@@ -174,7 +179,6 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
             <option value={60}>60 min</option>
           </select>
         </div>
-        <NumberField label="Sesión mínima" value={s.minSessionMinutes} min={15} max={720} step={15} onChange={(v) => set("minSessionMinutes", v)} suffix="min" />
         <NumberField
           label="Tope semanal"
           value={s.maxWeeklyMinutes / 60}
@@ -183,6 +187,30 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
           onChange={(v) => set("maxWeeklyMinutes", v * 60)}
           suffix="h / persona"
         />
+      </div>
+      <div className="border-t border-zinc-100 pt-4">
+        <h3 className="text-sm font-semibold">Calendario recomendado</h3>
+        <p className="mb-3 text-xs text-zinc-500">Cuánto tiempo de sesión de equipo se agenda para cada proyecto.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField
+            label="Por proyecto"
+            value={s.projectWeeklyMinutes / 60}
+            min={0}
+            max={168}
+            step={0.5}
+            onChange={(v) => set("projectWeeklyMinutes", Math.round(v * 60))}
+            suffix="h / semana"
+          />
+          <NumberField
+            label="Cada sesión"
+            value={s.projectSessionMinutes / 60}
+            min={0.5}
+            max={12}
+            step={0.5}
+            onChange={(v) => set("projectSessionMinutes", Math.round(v * 60))}
+            suffix="h"
+          />
+        </div>
       </div>
       {msg && <p className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>{msg.text}</p>}
       <button className="btn-dark w-full" disabled={saving}>{saving ? "Guardando…" : "Guardar reglas"}</button>

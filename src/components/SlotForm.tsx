@@ -5,7 +5,7 @@ import { fromInputs, toDateInput, toTimeInput } from "@/lib/client";
 import type { ProjectOption, SlotKind, UserOption } from "@/lib/types";
 
 export type SlotFormValue = {
-  userId: string;
+  participantIds: string[];
   start: Date;
   end: Date;
   kind: SlotKind;
@@ -15,7 +15,7 @@ export type SlotFormValue = {
 
 type Props = {
   initial: SlotFormValue;
-  /** Si se pasa, se muestra el selector de miembro (sólo admin). */
+  /** Si se pasa, se muestra el selector de participantes (sólo admin). */
   users?: UserOption[];
   projects: ProjectOption[];
   submitLabel: string;
@@ -24,7 +24,7 @@ type Props = {
 };
 
 export function SlotForm({ initial, users, projects, submitLabel, onSubmit, children }: Props) {
-  const [userId, setUserId] = useState(initial.userId);
+  const [participantIds, setParticipantIds] = useState(initial.participantIds);
   const [date, setDate] = useState(toDateInput(initial.start));
   const [startTime, setStartTime] = useState(toTimeInput(initial.start));
   const [endTime, setEndTime] = useState(toTimeInput(initial.end));
@@ -34,10 +34,15 @@ export function SlotForm({ initial, users, projects, submitLabel, onSubmit, chil
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Un miembro sólo ve sus proyectos; el admin ve los del miembro seleccionado primero.
-  const projectChoices = users
-    ? [...projects].sort((a, b) => Number(b.memberIds.includes(userId)) - Number(a.memberIds.includes(userId)))
-    : projects;
+  const toggleUser = (id: string) =>
+    setParticipantIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  function pickProject(id: string) {
+    setProjectId(id);
+    // Admin: al elegir proyecto propone a todo el equipo como participantes.
+    const project = projects.find((p) => p.id === id);
+    if (users && project && participantIds.length <= 1) setParticipantIds(project.memberIds);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,9 +51,10 @@ export function SlotForm({ initial, users, projects, submitLabel, onSubmit, chil
     const end = fromInputs(date, endTime === "00:00" ? "23:59" : endTime);
     if (end <= start) return setError("La hora de fin debe ser posterior a la de inicio");
     if (kind === "PROJECT" && !projectId) return setError("Elige un proyecto");
+    if (users && participantIds.length === 0) return setError("Elige al menos a un miembro");
     setSaving(true);
     try {
-      await onSubmit({ userId, start, end, kind, projectId: kind === "PROJECT" ? projectId : null, notes });
+      await onSubmit({ participantIds, start, end, kind, projectId: kind === "PROJECT" ? projectId : null, notes });
     } catch (err) {
       setError((err as Error).message);
       setSaving(false);
@@ -57,17 +63,6 @@ export function SlotForm({ initial, users, projects, submitLabel, onSubmit, chil
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      {users && (
-        <div>
-          <label className="label">Miembro</label>
-          <select className="input" value={userId} onChange={(e) => setUserId(e.target.value)} required>
-            <option value="" disabled>Selecciona…</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="col-span-2 sm:col-span-1">
           <label className="label">Día</label>
@@ -92,7 +87,7 @@ export function SlotForm({ initial, users, projects, submitLabel, onSubmit, chil
               onClick={() => setKind(k)}
               className={`rounded-lg border px-3 py-2 text-sm font-medium ${kind === k ? "border-brand bg-brand/5 text-brand" : "border-zinc-300 text-zinc-600 hover:bg-zinc-50"}`}
             >
-              {k === "LAB" ? "🎛️ Trabajar en el lab" : "🎧 Proyecto de equipo"}
+              {k === "LAB" ? "🎛️ Trabajar en el lab" : "🎧 Sesión de proyecto"}
             </button>
           ))}
         </div>
@@ -100,21 +95,32 @@ export function SlotForm({ initial, users, projects, submitLabel, onSubmit, chil
       {kind === "PROJECT" && (
         <div>
           <label className="label">Proyecto</label>
-          {projectChoices.length === 0 ? (
+          {projects.length === 0 ? (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               No perteneces a ningún proyecto activo. Pide a un admin que te agregue.
             </p>
           ) : (
-            <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
+            <select className="input" value={projectId} onChange={(e) => pickProject(e.target.value)} required>
               <option value="" disabled>Selecciona…</option>
-              {projectChoices.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {users && userId && !p.memberIds.includes(userId) ? " (no es integrante)" : ""}
-                </option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           )}
+          <p className="mt-1 text-xs text-zinc-500">Tu equipo podrá unirse a este horario desde el calendario.</p>
+        </div>
+      )}
+      {users && (
+        <div>
+          <label className="label">Participantes ({participantIds.length})</label>
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-zinc-200 p-2">
+            {users.map((u) => (
+              <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-zinc-50">
+                <input type="checkbox" className="accent-brand" checked={participantIds.includes(u.id)} onChange={() => toggleUser(u.id)} />
+                {u.name}
+              </label>
+            ))}
+          </div>
         </div>
       )}
       <div>

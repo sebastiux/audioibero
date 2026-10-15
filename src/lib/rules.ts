@@ -15,7 +15,7 @@ type SlotInput = {
 };
 
 /**
- * Valida un horario (disponibilidad o asignación) y normaliza projectId.
+ * Valida el horario de una reserva y normaliza projectId.
  * - termina después de empezar, mismo día local, máximo 16 h
  * - PROJECT requiere un proyecto activo; si `requireMembership`, el usuario debe pertenecer a él
  */
@@ -43,31 +43,28 @@ export async function validateSlot(slot: SlotInput, opts: { userId: string; requ
   return { projectId: slot.projectId };
 }
 
-export async function assertNoAvailabilityOverlap(userId: string, start: Date, end: Date, excludeId?: string) {
-  const clash = await prisma.availability.findFirst({
-    where: { userId, start: { lt: end }, end: { gt: start }, ...(excludeId ? { id: { not: excludeId } } : {}) },
-    select: { id: true },
+/** Ningún participante puede estar en dos reservas que se crucen. */
+export async function assertParticipantsFree(userIds: string[], start: Date, end: Date, excludeBookingId?: string) {
+  if (userIds.length === 0) return;
+  const clash = await prisma.bookingParticipant.findFirst({
+    where: {
+      userId: { in: userIds },
+      booking: { start: { lt: end }, end: { gt: start }, ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}) },
+    },
+    select: { user: { select: { name: true } } },
   });
-  if (clash) throw conflict("Ya tienes un espacio libre que se cruza con ese horario");
+  if (clash) throw conflict(`${clash.user.name} ya tiene otra reserva que se cruza con ese horario`);
 }
 
-export async function assertNoAssignmentOverlap(userId: string, start: Date, end: Date, excludeId?: string) {
-  const clash = await prisma.assignment.findFirst({
-    where: { userId, start: { lt: end }, end: { gt: start }, ...(excludeId ? { id: { not: excludeId } } : {}) },
-    select: { id: true },
-  });
-  if (clash) throw conflict("Esa persona ya tiene una asignación que se cruza con ese horario");
-}
-
-/** Cuántas asignaciones ocupan el lab en algún momento del intervalo (pico de ocupación). */
-export async function peakOccupancy(start: Date, end: Date, excludeId?: string) {
-  const rows = await prisma.assignment.findMany({
-    where: { start: { lt: end }, end: { gt: start }, ...(excludeId ? { id: { not: excludeId } } : {}) },
-    select: { start: true, end: true },
+/** Máximo de personas simultáneas en el lab durante el intervalo (sumando participantes). */
+export async function peakOccupancy(start: Date, end: Date, excludeBookingId?: string) {
+  const rows = await prisma.booking.findMany({
+    where: { start: { lt: end }, end: { gt: start }, ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}) },
+    select: { start: true, end: true, _count: { select: { participants: true } } },
   });
   const events = rows.flatMap((r) => [
-    { t: Math.max(r.start.getTime(), start.getTime()), d: 1 },
-    { t: Math.min(r.end.getTime(), end.getTime()), d: -1 },
+    { t: Math.max(r.start.getTime(), start.getTime()), d: r._count.participants },
+    { t: Math.min(r.end.getTime(), end.getTime()), d: -r._count.participants },
   ]);
   events.sort((a, b) => a.t - b.t || a.d - b.d);
   let current = 0;
@@ -77,4 +74,13 @@ export async function peakOccupancy(start: Date, end: Date, excludeId?: string) 
     peak = Math.max(peak, current);
   }
   return peak;
+}
+
+/** Lanza 409 si agregar `people` personas rebasa el cupo del lab en ese horario. */
+export async function assertCapacity(people: number, start: Date, end: Date, excludeBookingId?: string) {
+  const { capacity } = await getSettings();
+  const peak = await peakOccupancy(start, end, excludeBookingId);
+  if (peak + people > capacity) {
+    throw conflict(`El lab ya está lleno en parte de ese horario (${peak} de ${capacity} personas)`);
+  }
 }

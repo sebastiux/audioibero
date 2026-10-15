@@ -15,8 +15,9 @@ export default async function RecommendPage() {
         closeMinute: s.closeMinute,
         openDays: s.openDays,
         slotMinutes: s.slotMinutes,
-        minSessionMinutes: s.minSessionMinutes,
         maxWeeklyMinutes: s.maxWeeklyMinutes,
+        projectWeeklyMinutes: s.projectWeeklyMinutes,
+        projectSessionMinutes: s.projectSessionMinutes,
       }}
     />
   );

@@ -4,7 +4,7 @@ import { parseBody, requireAdmin, route } from "@/lib/api";
 import { rangeBounds } from "@/lib/recommend";
 import { applySchema } from "@/lib/validation";
 
-/** Guarda las propuestas del calendario recomendado como asignaciones. */
+/** Guarda las propuestas del calendario recomendado como reservas de equipo. */
 export const POST = route(async (req) => {
   const admin = await requireAdmin();
   const { from, to, proposals, replaceRecommended } = await parseBody(req, applySchema);
@@ -12,40 +12,48 @@ export const POST = route(async (req) => {
 
   const result = await prisma.$transaction(async (tx) => {
     const removed = replaceRecommended
-      ? (await tx.assignment.deleteMany({ where: { source: "RECOMMENDED", start: { lt: end }, end: { gt: start } } })).count
+      ? (await tx.booking.deleteMany({ where: { source: "RECOMMENDED", start: { lt: end }, end: { gt: start } } })).count
       : 0;
 
     const [users, projects, existing] = await Promise.all([
       tx.user.findMany({ where: { active: true }, select: { id: true } }),
       tx.project.findMany({ where: { active: true }, select: { id: true } }),
-      tx.assignment.findMany({ where: { start: { lt: end }, end: { gt: start } }, select: { userId: true, start: true, end: true } }),
+      tx.bookingParticipant.findMany({
+        where: { booking: { start: { lt: end }, end: { gt: start } } },
+        select: { userId: true, booking: { select: { start: true, end: true } } },
+      }),
     ]);
     const userIds = new Set(users.map((u) => u.id));
     const projectIds = new Set(projects.map((p) => p.id));
-    const taken = [...existing];
+    const taken = existing.map((e) => ({ userId: e.userId, start: e.booking.start, end: e.booking.end }));
 
-    // Descarta propuestas inválidas o que choquen con algo que se haya agregado mientras tanto.
-    const valid = proposals.filter((p) => {
-      if (p.end <= p.start || p.start < start || p.end > end || !userIds.has(p.userId)) return false;
-      if (p.projectId && !projectIds.has(p.projectId)) return false;
-      if (taken.some((t) => t.userId === p.userId && t.start < p.end && t.end > p.start)) return false;
-      taken.push({ userId: p.userId, start: p.start, end: p.end });
-      return true;
-    });
-
-    const { count } = await tx.assignment.createMany({
-      data: valid.map((p) => ({
-        userId: p.userId,
-        start: p.start,
-        end: p.end,
-        kind: p.projectId ? p.kind : "LAB",
-        projectId: p.projectId,
-        notes: p.reason ?? null,
-        source: "RECOMMENDED" as const,
-        createdById: admin.id,
-      })),
-    });
-    return { created: count, removed, skipped: proposals.length - valid.length };
+    let created = 0;
+    let skipped = 0;
+    for (const p of proposals) {
+      // Descarta lo inválido y a quien se haya ocupado mientras tanto.
+      const participants = [...new Set(p.participantIds)].filter(
+        (u) => userIds.has(u) && !taken.some((t) => t.userId === u && t.start < p.end && t.end > p.start),
+      );
+      if (p.end <= p.start || p.start < start || p.end > end || !projectIds.has(p.projectId) || participants.length === 0) {
+        skipped++;
+        continue;
+      }
+      await tx.booking.create({
+        data: {
+          start: p.start,
+          end: p.end,
+          kind: "PROJECT",
+          projectId: p.projectId,
+          notes: p.reason ?? null,
+          source: "RECOMMENDED",
+          createdById: admin.id,
+          participants: { create: participants.map((userId) => ({ userId })) },
+        },
+      });
+      for (const userId of participants) taken.push({ userId, start: p.start, end: p.end });
+      created++;
+    }
+    return { created, removed, skipped };
   });
 
   return NextResponse.json(result);

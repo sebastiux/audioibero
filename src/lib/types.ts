@@ -12,18 +12,15 @@ export type LabConfig = {
   slotMinutes: number;
 };
 
-type Ref = { id: string; name: string };
-
-export type CalendarItem = {
+export type BookingItem = {
   id: string;
-  userId: string;
   start: string;
   end: string;
   kind: SlotKind;
   projectId: string | null;
   notes: string | null;
-  user: Ref;
-  project: (Ref & { color: string }) | null;
+  source: "MANUAL" | "RECOMMENDED";
+  createdById: string;
+  project: { id: string; name: string; color: string } | null;
+  participants: { userId: string; user: { id: string; name: string } }[];
 };
-
-export type AssignmentItem = CalendarItem & { source: "MANUAL" | "RECOMMENDED" };

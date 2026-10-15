@@ -13,21 +13,21 @@ export default async function MembersPage() {
   const weekStart = fromLocal(monday, 0, tz);
   const weekEnd = fromLocal(addDaysToKey(monday, 7), 0, tz);
 
-  const [users, assignments, settings] = await Promise.all([
+  const [users, participations, settings] = await Promise.all([
     prisma.user.findMany({
       select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
-    prisma.assignment.findMany({
-      where: { start: { lt: weekEnd }, end: { gt: weekStart } },
-      select: { userId: true, start: true, end: true },
+    prisma.bookingParticipant.findMany({
+      where: { booking: { start: { lt: weekEnd }, end: { gt: weekStart } } },
+      select: { userId: true, booking: { select: { start: true, end: true } } },
     }),
     getSettings(),
   ]);
 
   const minutes = new Map<string, number>();
-  for (const a of assignments) {
-    minutes.set(a.userId, (minutes.get(a.userId) ?? 0) + Math.round((a.end.getTime() - a.start.getTime()) / 60000));
+  for (const { userId, booking } of participations) {
+    minutes.set(userId, (minutes.get(userId) ?? 0) + Math.round((booking.end.getTime() - booking.start.getTime()) / 60000));
   }
 
   return (
@@ -40,8 +40,9 @@ export default async function MembersPage() {
         closeMinute: settings.closeMinute,
         openDays: settings.openDays,
         slotMinutes: settings.slotMinutes,
-        minSessionMinutes: settings.minSessionMinutes,
         maxWeeklyMinutes: settings.maxWeeklyMinutes,
+        projectWeeklyMinutes: settings.projectWeeklyMinutes,
+        projectSessionMinutes: settings.projectSessionMinutes,
       }}
     />
   );
