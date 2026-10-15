@@ -63,3 +63,7 @@ src/app/(app)/**            Páginas: calendario, proyectos, admin
 src/components/**           UI (calendario, formularios, paneles admin)
 src/middleware.ts           Redirección a /login sin sesión
 ```
+
+## Seek & Bellman (práctica de Aprendizaje Reforzado)
+
+La carpeta [`wumpus-metallica/`](./wumpus-metallica) contiene un proyecto independiente (Vite + React) que no forma parte de la app del club: el Mundo del Wumpus con temática de Metallica resuelto con la Ecuación de Optimalidad de Bellman. Se publica en GitHub Pages con `.github/workflows/wumpus-pages.yml`. Ver su [README](./wumpus-metallica/README.md) y los [resultados paso a paso](./wumpus-metallica/RESULTADOS.md).
