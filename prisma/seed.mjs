@@ -15,9 +15,17 @@ async function main() {
   }
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    // No sobrescribimos la contraseña: sólo garantizamos que siga siendo admin y activo.
-    await prisma.user.update({ where: { email }, data: { role: "ADMIN", active: true } });
-    console.log(`[seed] admin ${email} ya existe`);
+    // Por defecto no sobrescribimos la contraseña; con ADMIN_RESET_PASSWORD=true se restablece.
+    const reset = process.env.ADMIN_RESET_PASSWORD === "true";
+    await prisma.user.update({
+      where: { email },
+      data: { role: "ADMIN", active: true, ...(reset ? { passwordHash: await bcrypt.hash(password, 12) } : {}) },
+    });
+    console.log(
+      reset
+        ? `[seed] contraseña de ${email} restablecida; quita ADMIN_RESET_PASSWORD`
+        : `[seed] admin ${email} ya existe (contraseña sin cambios; usa ADMIN_RESET_PASSWORD=true para restablecerla)`,
+    );
     return;
   }
   await prisma.user.create({

@@ -54,7 +54,7 @@ Otros comandos: `npm test` (pruebas), `npm run lint` (typecheck), `npm run db:st
    - `APP_TIMEZONE` → `America/Mexico_City`
 4. Genera un dominio público en *Settings → Networking*.
 
-El seed es idempotente: si el admin ya existe no cambia su contraseña.
+El seed es idempotente: si el admin ya existe no cambia su contraseña. Para restablecerla, define `ADMIN_RESET_PASSWORD=true`, haz deploy, inicia sesión y luego borra esa variable.
 
 ## Estructura
 
