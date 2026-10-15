@@ -10,7 +10,7 @@ export async function getSettings() {
 type SlotInput = {
   start: Date;
   end: Date;
-  kind: "LAB" | "PROJECT";
+  kind: "LAB" | "PROJECT" | "ASYNC";
   projectId?: string | null;
 };
 
@@ -30,6 +30,8 @@ export async function validateSlot(slot: SlotInput, opts: { userId: string; requ
   }
 
   if (slot.kind === "LAB") return { projectId: null };
+  // El trabajo asíncrono puede o no estar ligado a un proyecto.
+  if (slot.kind === "ASYNC" && !slot.projectId) return { projectId: null };
 
   if (!slot.projectId) throw badRequest("Elige el proyecto en el que vas a trabajar");
   const project = await prisma.project.findUnique({
@@ -56,10 +58,15 @@ export async function assertParticipantsFree(userIds: string[], start: Date, end
   if (clash) throw conflict(`${clash.user.name} ya tiene otra reserva que se cruza con ese horario`);
 }
 
-/** Máximo de personas simultáneas en el lab durante el intervalo (sumando participantes). */
+/** Máximo de personas simultáneas en el lab durante el intervalo (el trabajo asíncrono no cuenta). */
 export async function peakOccupancy(start: Date, end: Date, excludeBookingId?: string) {
   const rows = await prisma.booking.findMany({
-    where: { start: { lt: end }, end: { gt: start }, ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}) },
+    where: {
+      start: { lt: end },
+      end: { gt: start },
+      kind: { not: "ASYNC" },
+      ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
+    },
     select: { start: true, end: true, _count: { select: { participants: true } } },
   });
   const events = rows.flatMap((r) => [

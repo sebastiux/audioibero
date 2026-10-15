@@ -4,6 +4,8 @@ import { useState } from "react";
 import { fromInputs, toDateInput, toTimeInput } from "@/lib/client";
 import type { ProjectOption, SlotKind, UserOption } from "@/lib/types";
 
+const KIND_LABEL = { LAB: "🎛️ Lab", PROJECT: "🎧 Sesión de proyecto", ASYNC: "🌐 Asíncrono" } as const;
+
 export type SlotFormValue = {
   participantIds: string[];
   start: Date;
@@ -54,7 +56,7 @@ export function SlotForm({ initial, users, projects, submitLabel, onSubmit, chil
     if (users && participantIds.length === 0) return setError("Elige al menos a un miembro");
     setSaving(true);
     try {
-      await onSubmit({ participantIds, start, end, kind, projectId: kind === "PROJECT" ? projectId : null, notes });
+      await onSubmit({ participantIds, start, end, kind, projectId: kind !== "LAB" && projectId ? projectId : null, notes });
     } catch (err) {
       setError((err as Error).message);
       setSaving(false);
@@ -79,35 +81,38 @@ export function SlotForm({ initial, users, projects, submitLabel, onSubmit, chil
       </div>
       <div>
         <label className="label">¿Para qué?</label>
-        <div className="grid grid-cols-2 gap-2">
-          {(["LAB", "PROJECT"] as const).map((k) => (
+        <div className="grid grid-cols-3 gap-2">
+          {(["LAB", "PROJECT", "ASYNC"] as const).map((k) => (
             <button
               type="button"
               key={k}
               onClick={() => setKind(k)}
               className={`rounded-lg border px-3 py-2 text-sm font-medium ${kind === k ? "border-brand bg-brand/5 text-brand" : "border-zinc-300 text-zinc-600 hover:bg-zinc-50"}`}
             >
-              {k === "LAB" ? "🎛️ Trabajar en el lab" : "🎧 Sesión de proyecto"}
+              {KIND_LABEL[k]}
             </button>
           ))}
         </div>
       </div>
-      {kind === "PROJECT" && (
+      {kind === "ASYNC" && (
+        <p className="-mt-2 text-xs text-zinc-500">Trabajo remoto o fuera del lab: cuenta como horas pero no ocupa cupo.</p>
+      )}
+      {kind !== "LAB" && (
         <div>
-          <label className="label">Proyecto</label>
-          {projects.length === 0 ? (
+          <label className="label">Proyecto{kind === "ASYNC" ? " (opcional)" : ""}</label>
+          {projects.length === 0 && kind === "PROJECT" ? (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               No perteneces a ningún proyecto activo. Pide a un admin que te agregue.
             </p>
           ) : (
-            <select className="input" value={projectId} onChange={(e) => pickProject(e.target.value)} required>
-              <option value="" disabled>Selecciona…</option>
+            <select className="input" value={projectId} onChange={(e) => pickProject(e.target.value)} required={kind === "PROJECT"}>
+              <option value="" disabled={kind === "PROJECT"}>{kind === "PROJECT" ? "Selecciona…" : "Sin proyecto"}</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           )}
-          <p className="mt-1 text-xs text-zinc-500">Tu equipo podrá unirse a este horario desde el calendario.</p>
+          {kind === "PROJECT" && <p className="mt-1 text-xs text-zinc-500">Tu equipo podrá unirse a este horario desde el calendario.</p>}
         </div>
       )}
       {users && (

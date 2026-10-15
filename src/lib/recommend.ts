@@ -3,6 +3,7 @@ import { prisma } from "./db";
 import { badRequest } from "./api";
 import { getSettings } from "./rules";
 import { recommendSchedule } from "./scheduler";
+import { allIberoClasses, missionOccurrences } from "./busy";
 import { addDaysToKey, appTimeZone, fromLocal } from "./time";
 
 export function rangeBounds(fromKey: string, toKey: string) {
@@ -22,7 +23,7 @@ export async function buildRecommendation(fromKey: string, toKey: string, replac
   const wideStart = new Date(start.getTime() - week);
   const wideEnd = new Date(end.getTime() + week);
 
-  const [settings, projects, existing, users] = await Promise.all([
+  const [settings, projects, existing, users, classes, missions] = await Promise.all([
     getSettings(),
     prisma.project.findMany({
       where: { active: true },
@@ -37,10 +38,13 @@ export async function buildRecommendation(fromKey: string, toKey: string, replac
           ? { NOT: { source: "RECOMMENDED" as const, start: { lt: end }, end: { gt: start } } }
           : {}),
       },
-      select: { start: true, end: true, projectId: true, participants: { select: { userId: true } } },
+      select: { start: true, end: true, kind: true, projectId: true, participants: { select: { userId: true } } },
     }),
-    prisma.user.findMany({ select: { id: true, name: true } }),
+    prisma.user.findMany({ select: { id: true, name: true, active: true } }),
+    allIberoClasses(wideStart, wideEnd, tz),
+    missionOccurrences(start, end, tz),
   ]);
+  const activeIds = users.filter((u) => u.active).map((u) => u.id);
 
   const result = recommendSchedule({
     fromKey,
@@ -48,12 +52,18 @@ export async function buildRecommendation(fromKey: string, toKey: string, replac
     timeZone: tz,
     settings,
     projects: projects.map((p) => ({ id: p.id, name: p.name, memberIds: p.members.map((m) => m.userId) })),
-    existing: existing.map((b) => ({
-      start: b.start,
-      end: b.end,
-      projectId: b.projectId,
-      participantIds: b.participants.map((p) => p.userId),
-    })),
+    existing: [
+      ...existing.map((b) => ({
+        start: b.start,
+        end: b.end,
+        projectId: b.projectId,
+        participantIds: b.participants.map((p) => p.userId),
+        occupiesLab: b.kind !== "ASYNC",
+      })),
+      // Clases Ibero de cada quien y sesiones generales (para todos): bloquean personas, no el lab.
+      ...classes.map((c) => ({ start: c.start, end: c.end, participantIds: [c.userId], occupiesLab: false })),
+      ...missions.map((m) => ({ start: m.start, end: m.end, participantIds: activeIds, occupiesLab: false })),
+    ],
   });
 
   const userName = new Map(users.map((u) => [u.id, u.name]));

@@ -14,10 +14,12 @@ export function Nav({ user }: Props) {
   const [open, setOpen] = useState(false);
   const links = [
     { href: "/calendario", label: "Calendario" },
+    { href: "/mi-plan", label: "Mi plan" },
+    { href: "/misiones", label: "Misiones" },
     { href: "/proyectos", label: "Proyectos" },
     ...(user.role === "ADMIN"
       ? [
-          { href: "/admin/recomendado", label: "Calendario recomendado" },
+          { href: "/admin/recomendado", label: "Recomendado" },
           { href: "/admin/miembros", label: "Miembros y lab" },
         ]
       : []),

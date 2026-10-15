@@ -2,6 +2,7 @@
 
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
+import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
 import type { EventInput } from "@fullcalendar/core";
 import { useMemo, useState } from "react";
@@ -66,6 +67,14 @@ export function RecommendPanel({
     }
   }
 
+  /** Ajuste manual: el admin arrastra o estira una sesión propuesta antes de aplicarla. */
+  function moveProposal(index: number, start: Date | null, end: Date | null) {
+    if (!start || !end) return;
+    setResult((r) =>
+      r ? { ...r, proposals: r.proposals.map((p, i) => (i === index ? { ...p, start: start.toISOString(), end: end.toISOString() } : p)) } : r,
+    );
+  }
+
   async function apply() {
     if (!result) return;
     if (!confirm(`Se crearán ${kept.length} sesiones de equipo${replace ? " y se reemplazarán las recomendadas previas del periodo" : ""}. ¿Continuar?`)) return;
@@ -98,6 +107,7 @@ export function RecommendPanel({
             backgroundColor: p.projectColor,
             borderColor: p.projectColor,
             classNames: ["ev-proposal"],
+            editable: true,
           },
         ],
   );
@@ -176,10 +186,10 @@ export function RecommendPanel({
           ) : (
             <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
               <div className="card p-3">
-                <p className="mb-2 px-1 text-xs text-zinc-500">Haz clic en una sesión para quitarla de la propuesta.</p>
+                <p className="mb-2 px-1 text-xs text-zinc-500">Arrastra o estira las sesiones para ajustar sus horas · clic en una sesión para quitarla de la propuesta.</p>
                 <FullCalendar
                   key={from}
-                  plugins={[timeGridPlugin]}
+                  plugins={[timeGridPlugin, interactionPlugin]}
                   locale={esLocale}
                   initialView="timeGridWeek"
                   initialDate={from}
@@ -190,6 +200,9 @@ export function RecommendPanel({
                   slotMinTime={minutesToHHMM(Math.max(0, lab.openMinute - 60))}
                   slotMaxTime={minutesToHHMM(Math.min(1439, lab.closeMinute + 60))}
                   events={events}
+                  snapDuration="00:15:00"
+                  eventDrop={(arg) => moveProposal(Number(arg.event.id), arg.event.start, arg.event.end)}
+                  eventResize={(arg) => moveProposal(Number(arg.event.id), arg.event.start, arg.event.end)}
                   eventClick={(arg) => {
                     const i = Number(arg.event.id);
                     const p = result.proposals[i];
