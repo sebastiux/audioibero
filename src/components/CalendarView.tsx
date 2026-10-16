@@ -14,6 +14,7 @@ import type { BookingItem, LabConfig, Me, MissionItem, MissionOccurrenceItem, Pr
 import { Modal } from "./Modal";
 import { SlotForm, type SlotFormValue } from "./SlotForm";
 import { findCoincidences, presentAt } from "@/lib/coincidences";
+import { useMounted } from "./useMounted";
 
 type Props = {
   me: Me;
@@ -38,6 +39,7 @@ const isIn = (b: BookingItem, userId: string) => b.participants.some((p) => p.us
 
 export function CalendarView({ me, users, projects, lab, reminders }: Props) {
   const isAdmin = me.role === "ADMIN";
+  const mounted = useMounted();
   const calendarRef = useRef<FullCalendar>(null);
   const rangeRef = useRef<{ start: Date; end: Date } | null>(null);
   const [bookings, setBookings] = useState<BookingItem[]>([]);
@@ -298,39 +300,44 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       <WhoIsThere me={me} bookings={bookings} teammates={teammates} onOpen={(id) => setDialog({ type: "booking", id })} />
 
       <div className={`card p-3 transition-opacity ${loading ? "opacity-70" : ""}`}>
-        <FullCalendar
-          ref={calendarRef}
-          plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
-          locale={esLocale}
-          initialView="timeGridWeek"
-          headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" }}
-          height="auto"
-          allDaySlot={false}
-          nowIndicator
-          slotDuration={slotDuration}
-          snapDuration="00:15:00"
-          slotMinTime={minutesToHHMM(Math.max(0, lab.openMinute - 60))}
-          slotMaxTime={minutesToHHMM(Math.min(1440, lab.closeMinute + 60)).replace("24:00", "23:59")}
-          businessHours={{
-            daysOfWeek: lab.openDays,
-            startTime: minutesToHHMM(lab.openMinute),
-            endTime: minutesToHHMM(lab.closeMinute).replace("24:00", "23:59"),
-          }}
-          firstDay={1}
-          selectable
-          selectMirror
-          selectLongPressDelay={300}
-          eventLongPressDelay={300}
-          selectAllow={(s) => s.start.toDateString() === new Date(s.end.getTime() - 1).toDateString()}
-          events={events}
-          datesSet={onDatesSet}
-          select={onSelect}
-          eventClick={onEventClick}
-          eventDrop={onMoveOrResize}
-          eventResize={onMoveOrResize}
-          eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-          slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-        />
+        {/* El calendario depende de "hoy" y de la zona del navegador: se dibuja sólo en el cliente. */}
+        {!mounted ? (
+          <div className="flex h-[640px] items-center justify-center text-sm text-zinc-400">Cargando calendario…</div>
+        ) : (
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
+            locale={esLocale}
+            initialView={isMobile ? "timeGridDay" : "timeGridWeek"}
+            headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" }}
+            height="auto"
+            allDaySlot={false}
+            nowIndicator
+            slotDuration={slotDuration}
+            snapDuration="00:15:00"
+            slotMinTime={minutesToHHMM(Math.max(0, lab.openMinute - 60))}
+            slotMaxTime={minutesToHHMM(Math.min(1440, lab.closeMinute + 60)).replace("24:00", "23:59")}
+            businessHours={{
+              daysOfWeek: lab.openDays,
+              startTime: minutesToHHMM(lab.openMinute),
+              endTime: minutesToHHMM(lab.closeMinute).replace("24:00", "23:59"),
+            }}
+            firstDay={1}
+            selectable
+            selectMirror
+            selectLongPressDelay={300}
+            eventLongPressDelay={300}
+            selectAllow={(s) => s.start.toDateString() === new Date(s.end.getTime() - 1).toDateString()}
+            events={events}
+            datesSet={onDatesSet}
+            select={onSelect}
+            eventClick={onEventClick}
+            eventDrop={onMoveOrResize}
+            eventResize={onMoveOrResize}
+            eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+            slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+          />
+        )}
       </div>
 
       {dialog?.type === "create" && (

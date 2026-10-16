@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, formatHours, hhmmToMinutes, minutesToHHMM, WEEKDAYS } from "@/lib/client";
+import { api, fmtDate, formatHours, hhmmToMinutes, minutesToHHMM, WEEKDAYS } from "@/lib/client";
 import { Modal } from "./Modal";
 
 type UserRow = {
@@ -83,7 +83,7 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
                     <div className="text-xs text-zinc-500">{u.email}</div>
                     {u.pending && (
                       <div className="mt-0.5 text-xs font-medium text-amber-700">
-                        ✉️ Invitación pendiente{u.invitedAt ? ` · enviada el ${new Date(u.invitedAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}` : ""}
+                        ✉️ Invitación pendiente{u.invitedAt ? ` · enviada el ${fmtDate(u.invitedAt, { day: "numeric", month: "short" })}` : ""}
                       </div>
                     )}
                   </td>

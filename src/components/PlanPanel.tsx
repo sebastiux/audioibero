@@ -9,7 +9,7 @@ import type { EventInput } from "@fullcalendar/core";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { api, formatHours, minutesToHHMM, toDateInput } from "@/lib/client";
+import { addDaysKey, api, fmtDate, formatHours, minutesToHHMM, todayKey, toDateInput, weekdayOfKey } from "@/lib/client";
 import type { IberoClass } from "@/lib/ibero-pdf";
 import type { LabConfig, ProjectOption, SlotKind } from "@/lib/types";
 
@@ -17,13 +17,12 @@ type Busy = { start: string; end: string; title: string; type: "class" | "bookin
 type LegendKey = Busy["type"] | "team";
 type Block = { key: number; start: Date; end: Date };
 
+/** Lunes a domingo de la próxima semana, en la fecha del club (igual en servidor y navegador). */
 function nextWeek() {
-  const d = new Date();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  return { from: toDateInput(monday), to: toDateInput(sunday) };
+  const today = todayKey();
+  const wd = weekdayOfKey(today);
+  const monday = addDaysKey(today, wd === 0 ? 1 : 8 - wd);
+  return { from: monday, to: addDaysKey(monday, 6) };
 }
 
 type Period = "this-week" | "next-week" | "month" | "semester" | "custom";
@@ -70,20 +69,18 @@ export function PlanPanel(props: {
 
   /** Rango de cada periodo. "Todo el semestre" va de hoy hasta la última clase del PDF (o 16 semanas). */
   function rangeOf(p: Exclude<Period, "custom">) {
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
-    const nextMonday = new Date(`${nextWeek().from}T12:00:00`);
+    const today = todayKey();
+    const nextMonday = nextWeek().from;
     const start = p === "next-week" || p === "month" ? nextMonday : today;
-    const end = new Date(start);
-    if (p === "this-week") end.setDate(today.getDate() + ((7 - today.getDay()) % 7));
-    else if (p === "next-week") end.setDate(start.getDate() + 6);
-    else if (p === "month") end.setDate(start.getDate() + 27);
+    let end: string;
+    if (p === "this-week") end = addDaysKey(today, (7 - weekdayOfKey(today)) % 7);
+    else if (p === "next-week") end = addDaysKey(start, 6);
+    else if (p === "month") end = addDaysKey(start, 27);
     else {
       const last = (props.iberoClasses ?? []).map((c) => c.endsOn).sort().at(-1);
-      if (last && last > toDateInput(start)) end.setTime(new Date(`${last}T12:00:00`).getTime());
-      else end.setDate(start.getDate() + 16 * 7 - 1);
+      end = last && last > start ? last : addDaysKey(start, 16 * 7 - 1);
     }
-    return { from: toDateInput(start), to: toDateInput(end) };
+    return { from: start, to: end };
   }
 
   /** Elegir un periodo actualiza las fechas y, si ya hay una propuesta en pantalla, la recalcula. */
@@ -243,7 +240,7 @@ export function PlanPanel(props: {
             <h2 className="font-semibold">1 · Tu horario Ibero</h2>
             <p className="text-sm text-zinc-500">
               {props.iberoUpdatedAt
-                ? `Guardado el ${new Date(props.iberoUpdatedAt).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}. Súbelo de nuevo si cambió.`
+                ? `Guardado el ${fmtDate(props.iberoUpdatedAt, { day: "numeric", month: "long" })}. Súbelo de nuevo si cambió.`
                 : "Sube el PDF de “Materias inscritas”. Sin él, la propuesta sólo evita tus horarios registrados y las sesiones fijas de tus proyectos."}
             </p>
           </div>

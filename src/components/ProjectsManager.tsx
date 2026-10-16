@@ -2,10 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api } from "@/lib/client";
+import { api, fmtDate, todayKey } from "@/lib/client";
 import type { Me, MissionItem, UserOption } from "@/lib/types";
 import { ActivityDialog, activitySchedule, fmtDay } from "./ActivityDialog";
 import { Modal } from "./Modal";
+import { useMounted } from "./useMounted";
 
 export type ProjectRow = {
   id: string;
@@ -71,7 +72,9 @@ function Activities({
   const sessions = items.filter((m) => m.type === "RECURRING");
   const reminders = items.filter((m) => m.type === "REMINDER");
   if (!isAdmin && items.length === 0) return null;
-  const today = new Date(new Date().toDateString());
+  // Recordatorios con fecha pasada se tachan sólo en el navegador (depende de "hoy").
+  const mounted = useMounted();
+  const today = mounted ? todayKey() : null;
   return (
     <div className="mt-4 space-y-3 border-t border-zinc-100 pt-3 text-sm">
       {(sessions.length > 0 || isAdmin) && (
@@ -119,14 +122,14 @@ function Activities({
                   {m.pinned && "📌 "}
                   <b>{m.title}</b>
                   {m.dueDate && (
-                    <span className={`first-letter:uppercase ${new Date(m.dueDate) < today ? "text-zinc-400 line-through" : "text-brand"}`}>
+                    <span className={`first-letter:uppercase ${today && m.dueDate.slice(0, 10) < today ? "text-zinc-400 line-through" : "text-brand"}`}>
                       {" "}· {fmtDay(m.dueDate)}
                     </span>
                   )}
                   {m.description && <span className="block whitespace-pre-wrap text-xs text-zinc-600">{m.description}</span>}
                   {isAdmin && m.emailedAt && (
                     <span className="block text-xs text-zinc-400">
-                      📧 Enviado el {new Date(m.emailedAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                      📧 Enviado el {fmtDate(m.emailedAt, { day: "numeric", month: "short" })}
                     </span>
                   )}
                 </span>

@@ -36,3 +36,28 @@ export function formatHours(minutes: number) {
   const m = minutes % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
 }
+
+/**
+ * Zona horaria del club. Las fechas que se muestran se formatean siempre en esta zona para que
+ * el servidor (UTC en Railway) y el navegador generen el mismo texto (si no, React marca error de hidratación).
+ */
+export const APP_TZ = "America/Mexico_City";
+
+export function fmtDate(iso: string | Date, opts: Intl.DateTimeFormatOptions) {
+  return new Date(iso).toLocaleDateString("es-MX", { timeZone: APP_TZ, ...opts });
+}
+
+/** Fecha local del club (YYYY-MM-DD), igual en servidor y navegador. */
+export function todayKey(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** Suma días a una fecha YYYY-MM-DD. */
+export function addDaysKey(key: string, days: number) {
+  const d = new Date(`${key}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 0 = domingo ... 6 = sábado de una fecha YYYY-MM-DD. */
+export const weekdayOfKey = (key: string) => new Date(`${key}T12:00:00Z`).getUTCDay();
