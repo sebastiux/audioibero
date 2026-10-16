@@ -13,7 +13,7 @@ import Link from "next/link";
 import type { BookingItem, LabConfig, Me, MissionItem, MissionOccurrenceItem, ProjectOption, UserOption } from "@/lib/types";
 import { Modal } from "./Modal";
 import { SlotForm, type SlotFormValue } from "./SlotForm";
-import { findCoincidences, presentAt } from "@/lib/coincidences";
+import { findCoincidences, presentAt, type ScheduleLike } from "@/lib/coincidences";
 import { useMounted } from "./useMounted";
 
 type Props = {
@@ -143,11 +143,13 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
         id: `mission:${m.missionId}:${m.start}`,
         start: m.start,
         end: m.end,
-        title: `🔁 ${m.projectName ? `${m.projectName}: ` : ""}${m.title}`,
+        title: `🔁 ${m.projectName ? `${m.projectName}: ` : ""}${m.title}${m.going.length ? ` · ✓ ${m.going.length}` : ""}${
+          m.myStatus === "GOING" ? " (vas)" : ""
+        }`,
         backgroundColor: color,
         borderColor: MISSION_COLOR,
         textColor: "#fff",
-        classNames: ["ev-mission"],
+        classNames: ["ev-mission", ...(m.myStatus === "GOING" ? ["ev-mine"] : [])],
         editable: false,
         extendedProps: { mission: m },
       });
@@ -297,7 +299,27 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <WhoIsThere me={me} bookings={bookings} teammates={teammates} onOpen={(id) => setDialog({ type: "booking", id })} />
+      <WhoIsThere
+        me={me}
+        schedules={[
+          ...bookings,
+          // Las sesiones fijas cuentan con quienes confirmaron que van.
+          ...missions.map((m) => ({
+            id: `mission:${m.missionId}:${m.dateKey}`,
+            start: m.start,
+            end: m.end,
+            kind: m.kind === "ASYNC" ? ("ASYNC" as const) : ("LAB" as const),
+            participants: m.going.map((g) => ({ userId: g.userId, user: { name: g.name } })),
+          })),
+        ]}
+        teammates={teammates}
+        onOpen={(id) => {
+          if (!id.startsWith("mission:")) return setDialog({ type: "booking", id });
+          const [, missionId, dateKey] = id.split(":");
+          const occurrence = missions.find((m) => m.missionId === missionId && m.dateKey === dateKey);
+          if (occurrence) setDialog({ type: "mission", occurrence });
+        }}
+      />
 
       <div className={`card p-3 transition-opacity ${loading ? "opacity-70" : ""}`}>
         {/* El calendario depende de "hoy" y de la zona del navegador: se dibuja sólo en el cliente. */}
@@ -356,20 +378,13 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       )}
 
       {dialog?.type === "mission" && (
-        <Modal
-          title={`🔁 ${dialog.occurrence.projectName ? `${dialog.occurrence.projectName}: ` : ""}${dialog.occurrence.title}`}
+        <MissionSessionDialog
+          occurrence={missions.find((m) => m.missionId === dialog.occurrence.missionId && m.dateKey === dialog.occurrence.dateKey) ?? dialog.occurrence}
+          me={me}
           onClose={() => setDialog(null)}
-        >
-          <p className="text-sm first-letter:uppercase">
-            {formatRange(new Date(dialog.occurrence.start), new Date(dialog.occurrence.end))}
-          </p>
-          <p className="mt-2 text-sm text-zinc-500">
-            Sesión fija {dialog.occurrence.projectName ? "del proyecto" : "de todo el club"}, se repite cada semana (la define el admin).
-          </p>
-          <div className="mt-5 flex justify-end">
-            <Link href="/proyectos" className="btn-dark">Ver proyectos</Link>
-          </div>
-        </Modal>
+          onChanged={load}
+          onScheduleSame={(start, end) => setDialog({ type: "create", start, end })}
+        />
       )}
 
       {selected && (
@@ -380,6 +395,7 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
           booking={selected}
           onClose={() => setDialog(null)}
           onDone={closeAndReload}
+          onScheduleSame={(start, end) => setDialog({ type: "create", start, end })}
         />
       )}
     </div>
@@ -402,6 +418,8 @@ function BookingDialog(props: {
   booking: BookingItem;
   onClose: () => void;
   onDone: () => Promise<void>;
+  /** Abre el formulario para registrar mi propio horario a la misma hora */
+  onScheduleSame: (start: Date, end: Date) => void;
 }) {
   const { booking, me } = props;
   const isAdmin = me.role === "ADMIN";
@@ -524,6 +542,16 @@ function BookingDialog(props: {
             Ya no voy
           </button>
         )}
+        {!mine && !ended && (
+          <button
+            className="btn-ghost"
+            disabled={busy}
+            title="Registra tu propio horario a la misma hora (puedes elegir lab, proyecto o asíncrono)"
+            onClick={() => props.onScheduleSame(new Date(booking.start), new Date(booking.end))}
+          >
+            📅 Agendar el mismo horario
+          </button>
+        )}
         {!mine && !ended && (isTeamMember || isAdmin) && (
           <button className="btn-primary" disabled={busy} onClick={() => run(() => api(`/api/bookings/${booking.id}/join`, { method: "POST" }))}>
             Yo también voy
@@ -535,8 +563,8 @@ function BookingDialog(props: {
 }
 
 /** Quién está ahora en el lab y quién coincide conmigo en mis próximos horarios (de la vista actual). */
-function WhoIsThere(props: { me: Me; bookings: BookingItem[]; teammates: Set<string>; onOpen: (id: string) => void }) {
-  const { me, bookings, teammates } = props;
+function WhoIsThere(props: { me: Me; schedules: ScheduleLike[]; teammates: Set<string>; onOpen: (id: string) => void }) {
+  const { me, schedules: bookings, teammates } = props;
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -549,7 +577,9 @@ function WhoIsThere(props: { me: Me; bookings: BookingItem[]; teammates: Set<str
     () => findCoincidences(me.id, bookings, teammates).filter((c) => c.end > now),
     [me.id, bookings, teammates, now],
   );
-  const myUpcoming = bookings.some((b) => b.kind !== "ASYNC" && isIn(b, me.id) && new Date(b.end) > now);
+  const myUpcoming = bookings.some(
+    (b) => b.kind !== "ASYNC" && b.participants.some((p) => p.userId === me.id) && new Date(b.end) > now,
+  );
   const shown = expanded ? coincidences : coincidences.slice(0, 4);
   const hhmm = (d: Date) => d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -611,5 +641,110 @@ function WhoIsThere(props: { me: Me; bookings: BookingItem[]; teammates: Set<str
         {teammates.size > 0 && <p className="mt-2 text-xs text-zinc-400">En morado: gente de tus proyectos.</p>}
       </div>
     </section>
+  );
+}
+
+/** Sesión fija (recurrente): quién confirmó, confirmar mi asistencia o agendar el mismo horario. */
+function MissionSessionDialog(props: {
+  occurrence: MissionOccurrenceItem;
+  me: Me;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+  onScheduleSame: (start: Date, end: Date) => void;
+}) {
+  const o = props.occurrence;
+  const [allWeeks, setAllWeeks] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ended = new Date(o.end) <= new Date();
+
+  async function respond(status: "GOING" | "NOT_GOING" | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/missions/${o.missionId}/attendance`, {
+        body: { date: o.dateKey, status, scope: allWeeks ? "series" : "one" },
+      });
+      await props.onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const chip = (p: { userId: string; name: string }, tone: string) => (
+    <span key={p.userId} className={`rounded-full px-2 py-0.5 text-xs ${p.userId === props.me.id ? "bg-brand text-white" : tone}`}>
+      {p.userId === props.me.id ? "Tú" : p.name}
+    </span>
+  );
+
+  return (
+    <Modal title={`🔁 ${o.projectName ? `${o.projectName}: ` : ""}${o.title}`} onClose={props.onClose}>
+      <p className="text-sm first-letter:uppercase">{formatRange(new Date(o.start), new Date(o.end))}</p>
+      <p className="mt-1 text-xs text-zinc-500">
+        Sesión fija {o.projectName ? "del proyecto" : "de todo el club"}{o.kind === "ASYNC" ? " · remota" : " · en el lab"}; se repite cada semana.
+      </p>
+
+      <div className="mt-4 space-y-2 text-sm">
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">✅ Van ({o.going.length})</span>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {o.going.length === 0 ? <span className="text-xs text-zinc-400">Nadie ha confirmado todavía.</span> : o.going.map((p) => chip(p, "bg-emerald-50 text-emerald-800"))}
+          </div>
+        </div>
+        {o.notGoing.length > 0 && (
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">No pueden ({o.notGoing.length})</span>
+            <div className="mt-1 flex flex-wrap gap-1.5">{o.notGoing.map((p) => chip(p, "bg-zinc-100 text-zinc-600"))}</div>
+          </div>
+        )}
+      </div>
+
+      {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
+      {!ended && o.canRespond && (
+        <div className="mt-5 space-y-3 rounded-xl border border-zinc-200 p-3">
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span className="font-medium">
+              {o.myStatus === "GOING" ? "Confirmaste que vas ✅" : o.myStatus === "NOT_GOING" ? "Dijiste que no puedes" : "¿Vas a ir?"}
+            </span>
+            {o.myStatus && (
+              <button className="text-xs text-zinc-500 hover:underline" disabled={busy} onClick={() => respond(null)}>
+                Quitar respuesta
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={o.myStatus === "GOING" ? "btn-dark" : "btn-primary"}
+              disabled={busy || (o.myStatus === "GOING" && !allWeeks)}
+              onClick={() => respond("GOING")}
+            >
+              ✅ Asistiré
+            </button>
+            <button className="btn-ghost" disabled={busy || (o.myStatus === "NOT_GOING" && !allWeeks)} onClick={() => respond("NOT_GOING")}>
+              No podré
+            </button>
+          </div>
+          <label className="inline-flex items-center gap-2 text-xs text-zinc-600">
+            <input type="checkbox" className="accent-brand" checked={allWeeks} onChange={(e) => setAllWeeks(e.target.checked)} />
+            Aplicar a todas las semanas (desde hoy)
+          </label>
+        </div>
+      )}
+      {!ended && !o.canRespond && (
+        <p className="mt-4 text-xs text-zinc-500">Sólo los integrantes del proyecto confirman asistencia; puedes agendar tu propio horario a la misma hora.</p>
+      )}
+
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <Link href="/proyectos" className="btn-ghost mr-auto">Ver proyectos</Link>
+        {!ended && (
+          <button className="btn-ghost" onClick={() => props.onScheduleSame(new Date(o.start), new Date(o.end))}>
+            📅 Agendar el mismo horario
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

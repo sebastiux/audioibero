@@ -14,7 +14,8 @@ Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero
 | Exportar sus horarios y las sesiones fijas de sus proyectos a su calendario (.ics) | ✅ | ✅ |
 | Ver las sesiones fijas y recordatorios de los proyectos | ✅ | ✅ |
 | Definir sesiones fijas (semanales) y recordatorios por proyecto o para todo el club | — | ✅ |
-| Sumarse al horario de alguien ("Yo también voy") / quitarse | ✅ | ✅ |
+| Sumarse al horario de alguien ("Yo también voy") / quitarse, o "Agendar el mismo horario" (registro propio a la misma hora) | ✅ | ✅ |
+| Confirmar asistencia a las sesiones fijas (una fecha o todas las semanas) y ver quién va | ✅ | ✅ |
 | Mover o editar sus horarios (formulario o arrastrando) | ✅ (los que registró) | ✅ (cualquiera) |
 | Eliminar horarios completos | — | ✅ |
 | Asignar horarios a miembros y cambiar participantes | — | ✅ |
@@ -42,7 +43,7 @@ En `/mi-plan` cada miembro sube el PDF de **Materias inscritas** (Servicios en L
 
 ## Proyectos: sesiones fijas y recordatorios
 
-En `/proyectos`, además de los integrantes, el admin define para cada proyecto **sesiones fijas** (días de la semana, horario y vigencia; en el lab o remotas) y **recordatorios** (con fecha opcional; los fijados aparecen arriba del calendario de los integrantes). También hay una tarjeta "Todo el club" para lo que aplica a todos. Las sesiones fijas aparecen en el calendario con el color del proyecto, en el .ics exportado y se respetan al proponer horarios en Mi plan.
+En `/proyectos`, además de los integrantes, el admin define para cada proyecto **sesiones fijas** (días de la semana, horario y vigencia; en el lab o remotas) y **recordatorios** (con fecha opcional; los fijados aparecen arriba del calendario de los integrantes). También hay una tarjeta "Todo el club" para lo que aplica a todos. Las sesiones fijas aparecen en el calendario con el color del proyecto, en el .ics exportado y se respetan al proponer horarios en Mi plan. Al abrir una sesión fija, los integrantes del proyecto (o todos, si es del club) **confirman asistencia** ("Asistiré" / "No podré") para esa fecha o para todas las semanas; se ve quién va y quién no, y quienes confirmaron cuentan en "Quién coincide contigo". Cualquiera puede usar "Agendar el mismo horario" para registrarse a esa hora.
 
 El algoritmo de Mi plan vive en `src/lib/scheduler.ts` (función pura con pruebas en `scheduler.test.ts`).
 

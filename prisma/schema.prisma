@@ -32,6 +32,11 @@ enum TokenType {
   RESET
 }
 
+enum AttendanceStatus {
+  GOING
+  NOT_GOING
+}
+
 enum AssignmentSource {
   MANUAL
   RECOMMENDED
@@ -57,6 +62,7 @@ model User {
   invitedAt   DateTime?
   activatedAt DateTime?
   authTokens  AuthToken[]
+  attendances MissionAttendance[]
 
   bookingsCreated    Booking[]            @relation("BookingCreator")
   missionsCreated    Mission[]
@@ -155,10 +161,28 @@ model Mission {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  createdBy User     @relation(fields: [createdById], references: [id])
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User                @relation(fields: [createdById], references: [id])
+  project     Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  attendances MissionAttendance[]
 
   @@index([projectId])
+}
+
+/// Confirmación de asistencia a una sesión fija. `date` = YYYY-MM-DD de la fecha (hora del club);
+/// vacío ("") = respuesta para todas las semanas. Una respuesta de fecha concreta tiene prioridad.
+model MissionAttendance {
+  id        String           @id @default(cuid())
+  missionId String
+  userId    String
+  date      String           @default("")
+  status    AttendanceStatus
+  updatedAt DateTime         @updatedAt
+
+  mission Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([missionId, userId, date])
+  @@index([missionId, date])
 }
 
 /// Enlace de un solo uso enviado por correo. Sólo se guarda el hash del token.

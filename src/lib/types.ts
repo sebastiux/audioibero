@@ -29,6 +29,14 @@ export type MissionOccurrenceItem = {
   title: string;
   start: string;
   end: string;
+  /** Fecha de la sesión (YYYY-MM-DD) */
+  dateKey: string;
+  kind: SlotKind;
+  going: { userId: string; name: string }[];
+  notGoing: { userId: string; name: string }[];
+  myStatus: "GOING" | "NOT_GOING" | null;
+  /** Puedo confirmar asistencia (integrante del proyecto, sesión del club o admin) */
+  canRespond: boolean;
   projectId: string | null;
   projectName: string | null;
   projectColor: string | null;

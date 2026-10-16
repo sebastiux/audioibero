@@ -3,8 +3,12 @@ import { prisma } from "./db";
 import { busyBlocksFromIcs } from "./ibero";
 import type { IberoClass } from "./ibero-pdf";
 import { expandMission, type MissionOccurrence } from "./missions";
+import { toLocalParts } from "./time";
 
 export type ProjectSessionOccurrence = MissionOccurrence & {
+  /** Fecha de la sesión (YYYY-MM-DD, hora del club) */
+  dateKey: string;
+  kind: "LAB" | "PROJECT" | "ASYNC";
   projectId: string | null;
   projectName: string | null;
   projectColor: string | null;
@@ -33,6 +37,8 @@ export async function missionOccurrences(
   return missions.flatMap((m) =>
     expandMission(m, from, to, timeZone).map((o) => ({
       ...o,
+      dateKey: toLocalParts(o.start, timeZone).dateKey,
+      kind: m.kind,
       projectId: m.projectId,
       projectName: m.project?.name ?? null,
       projectColor: m.project?.color ?? null,
