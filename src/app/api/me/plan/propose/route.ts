@@ -40,6 +40,8 @@ export const POST = route(async (req) => {
     blockMinutes: data.blockMinutes,
     usesLab: data.kind !== "ASYNC",
     busy: [
+      // Nunca proponer horas que ya pasaron (p. ej. "Esta semana" empieza hoy).
+      ...(Date.now() > start.getTime() ? [{ start, end: new Date(Math.min(Date.now(), end.getTime())) }] : []),
       ...classes.map((c) => ({ start: c.start, end: c.end, isClass: true })),
       ...mine.map((b) => ({ start: b.start, end: b.end })),
       ...missions.map((m) => ({ start: m.start, end: m.end })),

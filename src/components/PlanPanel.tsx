@@ -2,6 +2,7 @@
 
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
+import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
 import type { EventInput } from "@fullcalendar/core";
@@ -24,6 +25,15 @@ function nextWeek() {
   return { from: toDateInput(monday), to: toDateInput(sunday) };
 }
 
+type Period = "this-week" | "next-week" | "month" | "semester" | "custom";
+
+const PERIODS: { id: Exclude<Period, "custom">; label: string }[] = [
+  { id: "this-week", label: "Esta semana" },
+  { id: "next-week", label: "Próxima semana" },
+  { id: "month", label: "4 semanas" },
+  { id: "semester", label: "Todo el semestre" },
+];
+
 const BUSY_STYLE: Record<Busy["type"], { bg: string; label: string }> = {
   class: { bg: "#a1a1aa", label: "Clase" },
   booking: { bg: "#71717a", label: "Ya reservado" },
@@ -44,6 +54,7 @@ export function PlanPanel(props: {
   const keyRef = useRef(0);
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
+  const [period, setPeriod] = useState<Period>("next-week");
   const [hours, setHours] = useState(6);
   const [blockMinutes, setBlockMinutes] = useState(120);
   const [kind, setKind] = useState<SlotKind>("LAB");
@@ -54,20 +65,34 @@ export function PlanPanel(props: {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  /** Atajos de periodo; "Todo el semestre" llega hasta la última clase del PDF (o 16 semanas). */
-  function preset(kind: "week" | "month" | "semester") {
-    const start = new Date(`${nextWeek().from}T12:00:00`);
+  /** Rango de cada periodo. "Todo el semestre" va de hoy hasta la última clase del PDF (o 16 semanas). */
+  function rangeOf(p: Exclude<Period, "custom">) {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const nextMonday = new Date(`${nextWeek().from}T12:00:00`);
+    const start = p === "next-week" || p === "month" ? nextMonday : today;
     const end = new Date(start);
-    if (kind === "week") end.setDate(start.getDate() + 6);
-    else if (kind === "month") end.setDate(start.getDate() + 27);
+    if (p === "this-week") end.setDate(today.getDate() + ((7 - today.getDay()) % 7));
+    else if (p === "next-week") end.setDate(start.getDate() + 6);
+    else if (p === "month") end.setDate(start.getDate() + 27);
     else {
       const last = (props.iberoClasses ?? []).map((c) => c.endsOn).sort().at(-1);
       if (last && last > toDateInput(start)) end.setTime(new Date(`${last}T12:00:00`).getTime());
       else end.setDate(start.getDate() + 16 * 7 - 1);
     }
-    setFrom(toDateInput(start));
-    setTo(toDateInput(end));
+    return { from: toDateInput(start), to: toDateInput(end) };
   }
+
+  /** Elegir un periodo actualiza las fechas y, si ya hay una propuesta en pantalla, la recalcula. */
+  function selectPeriod(p: Exclude<Period, "custom">) {
+    const range = rangeOf(p);
+    setPeriod(p);
+    setFrom(range.from);
+    setTo(range.to);
+    if (busy) void propose(undefined, range);
+  }
+
+  const weeksInRange = Math.max(1, Math.ceil((new Date(`${to}T12:00:00`).getTime() - new Date(`${from}T12:00:00`).getTime() + 86400000) / (7 * 86400000)));
 
   const totalMinutes = blocks.reduce((a, b) => a + (b.end.getTime() - b.start.getTime()) / 60000, 0);
 
@@ -101,14 +126,15 @@ export function PlanPanel(props: {
     router.refresh();
   }
 
-  async function propose(e?: React.FormEvent) {
+  async function propose(e?: React.FormEvent, range: { from: string; to: string } = { from, to }) {
     e?.preventDefault();
+    if (range.to < range.from) return setMessage({ ok: false, text: "La fecha final debe ser posterior a la inicial" });
     setLoading(true);
     setMessage(null);
     try {
       const res = await api<{ blocks: { start: string; end: string }[]; busy: Busy[]; missingMinutes: number; hasIbero: boolean }>(
         "/api/me/plan/propose",
-        { body: { from, to, weeklyHours: hours, blockMinutes, kind } },
+        { body: { from: range.from, to: range.to, weeklyHours: hours, blockMinutes, kind } },
       );
       setBusy(res.busy);
       setBlocks(res.blocks.map((b) => ({ key: ++keyRef.current, start: new Date(b.start), end: new Date(b.end) })));
@@ -261,21 +287,65 @@ export function PlanPanel(props: {
       <form onSubmit={propose} className="card space-y-4 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">2 · ¿Cuántas horas quieres?</h2>
-          <div className="flex flex-wrap gap-1.5 text-xs">
-            <span className="self-center text-zinc-500">Periodo:</span>
-            <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => preset("week")}>Próxima semana</button>
-            <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => preset("month")}>4 semanas</button>
-            <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => preset("semester")}>Todo el semestre</button>
+        </div>
+        <div>
+          <span className="label">Periodo</span>
+          <div role="radiogroup" aria-label="Periodo" className="flex flex-wrap gap-1.5">
+            {PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={period === p.id}
+                onClick={() => selectPeriod(p.id)}
+                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                  period === p.id ? "border-brand bg-brand text-white" : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <span
+              role="radio"
+              aria-checked={period === "custom"}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                period === "custom" ? "border-brand bg-brand text-white" : "border-dashed border-zinc-300 text-zinc-500"
+              }`}
+            >
+              Personalizado
+            </span>
+            <span className="self-center text-xs text-zinc-500">
+              {weeksInRange} {weeksInRange === 1 ? "semana" : "semanas"} · {formatHours(Math.round(hours * 60 * weeksInRange))} en total
+            </span>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
           <div>
             <label className="label">Desde</label>
-            <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
+            <input
+              className="input"
+              type="date"
+              value={from}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                setPeriod("custom");
+              }}
+              required
+            />
           </div>
           <div>
             <label className="label">Hasta</label>
-            <input className="input" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} required />
+            <input
+              className="input"
+              type="date"
+              value={to}
+              min={from}
+              onChange={(e) => {
+                setTo(e.target.value);
+                setPeriod("custom");
+              }}
+              required
+            />
           </div>
           <div>
             <label className="label">Horas / semana</label>
@@ -325,13 +395,14 @@ export function PlanPanel(props: {
               Arrastra o estira los bloques rojos para ajustarlos · arrastra sobre un hueco para agregar uno · clic en un bloque para quitarlo.
             </p>
             <FullCalendar
-              key={from}
-              plugins={[timeGridPlugin, interactionPlugin]}
+              key={`${from}|${to}`}
+              plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
               locale={esLocale}
               initialView="timeGridWeek"
               initialDate={from}
               firstDay={1}
-              headerToolbar={{ left: "prev,next", center: "title", right: "" }}
+              headerToolbar={{ left: "prev,next", center: "title", right: "timeGridWeek,dayGridMonth" }}
+              validRange={{ start: from, end: toDateInput(new Date(new Date(`${to}T12:00:00`).getTime() + 86400000)) }}
               height="auto"
               allDaySlot={false}
               slotMinTime={minutesToHHMM(Math.max(0, props.lab.openMinute - 60))}
