@@ -256,7 +256,8 @@ function ProjectDialog({
   const [color, setColor] = useState(project?.color ?? PALETTE[1]);
   const [startDate, setStartDate] = useState(project?.startDate ? project.startDate.slice(0, 10) : "");
   const [endDate, setEndDate] = useState(project?.endDate ? project.endDate.slice(0, 10) : "");
-  const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? []);
+  // Un proyecto nuevo incluye por defecto a todos los miembros activos; se puede quitar a quien no participe.
+  const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? users.map((u) => u.id));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -331,7 +332,19 @@ function ProjectDialog({
           </div>
         </div>
         <div>
-          <label className="label">Integrantes ({memberIds.length})</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="label mb-0">
+              Integrantes ({memberIds.length} de {users.length})
+            </label>
+            <div className="flex gap-3 text-xs font-medium">
+              <button type="button" className="text-brand hover:underline" onClick={() => setMemberIds(users.map((u) => u.id))}>
+                Todos
+              </button>
+              <button type="button" className="text-zinc-500 hover:underline" onClick={() => setMemberIds([])}>
+                Ninguno
+              </button>
+            </div>
+          </div>
           <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-zinc-200 p-2">
             {users.map((u) => (
               <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-zinc-50">
