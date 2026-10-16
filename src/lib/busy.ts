@@ -5,10 +5,41 @@ import { busyBlocksFromIcs } from "./ibero";
 import type { IberoClass } from "./ibero-pdf";
 import { expandMission, type MissionOccurrence } from "./missions";
 
-/** Ocurrencias de las misiones recurrentes activas dentro de [from, to). */
-export async function missionOccurrences(from: Date, to: Date, timeZone: string): Promise<MissionOccurrence[]> {
-  const missions = await prisma.mission.findMany({ where: { type: "RECURRING", active: true } });
-  return missions.flatMap((m) => expandMission(m, from, to, timeZone));
+export type ProjectSessionOccurrence = MissionOccurrence & {
+  projectId: string | null;
+  projectName: string | null;
+  projectColor: string | null;
+  /** Integrantes del proyecto (vacío = sesión de todo el club) */
+  memberIds: string[];
+};
+
+/**
+ * Sesiones fijas (recurrentes) de los proyectos activos dentro de [from, to).
+ * Con `forUserId` sólo devuelve las de sus proyectos y las generales del club.
+ */
+export async function missionOccurrences(
+  from: Date,
+  to: Date,
+  timeZone: string,
+  forUserId?: string,
+): Promise<ProjectSessionOccurrence[]> {
+  const missions = await prisma.mission.findMany({
+    where: {
+      type: "RECURRING",
+      active: true,
+      OR: [{ projectId: null }, { project: { active: true, ...(forUserId ? { members: { some: { userId: forUserId } } } : {}) } }],
+    },
+    include: { project: { select: { name: true, color: true, members: { select: { userId: true } } } } },
+  });
+  return missions.flatMap((m) =>
+    expandMission(m, from, to, timeZone).map((o) => ({
+      ...o,
+      projectId: m.projectId,
+      projectName: m.project?.name ?? null,
+      projectColor: m.project?.color ?? null,
+      memberIds: m.project?.members.map((x) => x.userId) ?? [],
+    })),
+  );
 }
 
 type IberoSource = { iberoIcs: string | null; iberoClasses: unknown };

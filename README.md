@@ -8,35 +8,35 @@ Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero
 
 | Acción | Miembro | Admin |
 | --- | :---: | :---: |
-| Ver el calendario del club (quién va, cuándo y si el lab está lleno) | ✅ | ✅ |
+| Ver el calendario del club (quién va y cuándo) | ✅ | ✅ |
 | Reservar horas en el lab, abrir una sesión de proyecto o registrar trabajo asíncrono | ✅ | ✅ (para cualquiera) |
 | **Mi plan**: subir su PDF de materias inscritas (o un .ics) y recibir una propuesta según las horas que elija | ✅ | ✅ |
-| Exportar sus reservas y las misiones a su calendario (.ics) | ✅ | ✅ |
-| Ver misiones generales (recordatorios y sesiones recurrentes) | ✅ | ✅ |
-| Crear misiones generales: recordatorios y sesiones recurrentes | — | ✅ |
+| Exportar sus reservas y las sesiones fijas de sus proyectos a su calendario (.ics) | ✅ | ✅ |
+| Ver las sesiones fijas y recordatorios de los proyectos | ✅ | ✅ |
+| Definir sesiones fijas (semanales) y recordatorios por proyecto o para todo el club | — | ✅ |
 | Unirse a una reserva existente / salirse | ✅ | ✅ |
 | Mover o editar sus reservas (formulario o arrastrando) | ✅ (las que creó) | ✅ (cualquiera) |
 | Eliminar reservas completas | — | ✅ |
 | Asignar horarios a miembros y cambiar participantes | — | ✅ |
 | Dar de alta, editar y archivar proyectos y sus integrantes | — | ✅ |
 | Generar y aplicar el calendario recomendado | — | ✅ |
-| Gestionar miembros (alta, perfil, desactivar), ver horas por semana y reglas del lab | — | ✅ |
+| Gestionar miembros (alta, perfil, desactivar), ver horas por semana y horario del lab | — | ✅ |
 
-Tipos de reserva: **Lab** (trabajo en el laboratorio), **Sesión de proyecto** (en el lab, el equipo se une) y **Asíncrono** (trabajo fuera del lab, con o sin proyecto: cuenta horas pero no ocupa cupo).
+Tipos de reserva: **Lab** (trabajo en el laboratorio), **Sesión de proyecto** (en el lab, el equipo se une) y **Asíncrono** (trabajo fuera del lab, con o sin proyecto).
 
-Reglas: nadie puede estar en dos reservas que se crucen; la suma de personas en el lab nunca pasa el cupo (el admin puede forzarlo); a las sesiones de un proyecto sólo se unen sus integrantes. Si el último participante se sale, la reserva desaparece.
+Reglas: el lab no tiene cupo (pueden coincidir los grupos que sea) ni hay tope de horas por persona; nadie puede estar en dos reservas que se crucen; a las sesiones de un proyecto sólo se unen sus integrantes. Si el último participante se sale, la reserva desaparece.
 
 ## Mi plan (calendario Ibero)
 
-En `/mi-plan` cada miembro sube el PDF de **Materias inscritas** (Servicios en Línea → Servicios escolares → Materias inscritas → Guardar como PDF); también acepta un calendario .ics. Del PDF sólo se guardan materia, salón, día, horario y vigencia; nombre, cuenta y adeudos se descartan y el archivo no se almacena. Elige cuántas horas a la semana quiere, la duración de los bloques y el tipo (lab, proyecto o asíncrono), y la app propone bloques que no chocan con sus clases, sus reservas ni las misiones generales: uno por día, de preferencia en días que ya va a la Ibero y pegados a sus clases, y donde el lab tiene cupo. Los bloques se pueden arrastrar, estirar, quitar o agregar antes de reservarlos. El horario Ibero guardado también lo usa el calendario recomendado del admin.
+En `/mi-plan` cada miembro sube el PDF de **Materias inscritas** (Servicios en Línea → Servicios escolares → Materias inscritas → Guardar como PDF); también acepta un calendario .ics. Del PDF sólo se guardan materia, salón, día, horario y vigencia; nombre, cuenta y adeudos se descartan y el archivo no se almacena. Elige cuántas horas a la semana quiere, el periodo (sin límite: una semana, un mes o todo el semestre), la duración de los bloques y el tipo (lab, proyecto o asíncrono), y la app propone bloques que no chocan con sus clases, sus reservas ni las sesiones fijas de sus proyectos: uno por día, de preferencia en días que ya va a la Ibero, pegados a sus clases y en horas menos concurridas. Los bloques se pueden arrastrar, estirar, quitar o agregar antes de reservarlos. El horario Ibero guardado también lo usa el calendario recomendado del admin.
 
-## Misiones generales
+## Proyectos: sesiones fijas y recordatorios
 
-En `/misiones` el admin publica **recordatorios** (con fecha opcional; los fijados aparecen arriba del calendario) y **sesiones recurrentes** (días de la semana, horario y vigencia; en el lab o remotas). Las sesiones recurrentes aparecen en el calendario de todos, en el .ics exportado, y se respetan al proponer horarios.
+En `/proyectos`, además de los integrantes, el admin define para cada proyecto **sesiones fijas** (días de la semana, horario y vigencia; en el lab o remotas) y **recordatorios** (con fecha opcional; los fijados aparecen arriba del calendario de los integrantes). También hay una tarjeta "Todo el club" para lo que aplica a todos. Las sesiones fijas aparecen en el calendario con el color del proyecto, en el .ics exportado, se respetan al proponer horarios y cuentan para la meta semanal del calendario recomendado.
 
 ## Calendario recomendado
 
-En `/admin/recomendado` el admin elige un periodo y la app propone **sesiones de equipo** para cada proyecto activo (por defecto 4 h a la semana en bloques de 2 h). Busca horarios en los que los integrantes no tengan otras reservas (si no caben todos, al menos la mitad del equipo), repartidos en días distintos y en las horas menos ocupadas del lab, respetando cupo, horario, días de apertura y el tope semanal por persona. Las sesiones de proyecto que ya existan cuentan para la meta. Las sesiones propuestas se pueden arrastrar y estirar para ajustar sus horas, o quitar, antes de aplicarlas; también evita las clases Ibero de los integrantes y las misiones generales; al aplicar puede reemplazar las recomendadas anteriores del periodo (las manuales nunca se tocan). Las reglas se ajustan en `/admin/miembros`.
+En `/admin/recomendado` el admin elige un periodo y la app propone **sesiones de equipo** para cada proyecto activo (por defecto 4 h a la semana en bloques de 2 h). El periodo puede ser tan largo como se quiera (p. ej. todo el semestre). Busca horarios en los que los integrantes no tengan otras reservas (si no caben todos, al menos la mitad del equipo), repartidos en días distintos y en las horas menos concurridas, dentro del horario y días de apertura. Las sesiones fijas y las sesiones de proyecto que ya existan cuentan para la meta. Las sesiones propuestas se pueden arrastrar y estirar para ajustar sus horas, o quitar, antes de aplicarlas; también evita las clases Ibero de los integrantes; al aplicar puede reemplazar las recomendadas anteriores del periodo (las manuales nunca se tocan). Las reglas se ajustan en `/admin/miembros`.
 
 El algoritmo vive en `src/lib/scheduler.ts` (función pura con pruebas en `scheduler.test.ts`).
 
@@ -73,8 +73,8 @@ prisma/schema.prisma        Modelos: User, Project, ProjectMember, Booking, Book
 src/lib/scheduler.ts        Algoritmos: calendario recomendado y plan personal
 src/lib/ibero-pdf.ts        Lectura del PDF "Materias inscritas" de la Ibero
 src/lib/ibero.ts            Lectura de calendarios .ics (clases recurrentes)
-src/lib/missions.ts         Expansión de misiones recurrentes
-src/lib/rules.ts            Reglas de negocio (validación de horarios, choques, cupo)
+src/lib/missions.ts         Expansión de sesiones fijas (recurrentes) de proyectos
+src/lib/rules.ts            Reglas de negocio (validación de horarios y choques)
 src/app/api/**              API REST (route handlers) con control de permisos por perfil
 src/app/(app)/**            Páginas: calendario, proyectos, admin
 src/components/**           UI (calendario, formularios, paneles admin)

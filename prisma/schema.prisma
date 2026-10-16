@@ -20,7 +20,7 @@ enum SlotKind {
   ASYNC
 }
 
-/// REMINDER = recordatorio/aviso; RECURRING = sesión general recurrente definida por el admin.
+/// REMINDER = recordatorio; RECURRING = sesión fija que se repite cada semana (definida por el admin).
 enum MissionType {
   REMINDER
   RECURRING
@@ -69,6 +69,7 @@ model Project {
   createdBy User            @relation(fields: [createdById], references: [id])
   members   ProjectMember[]
   bookings  Booking[]
+  missions  Mission[]
 }
 
 model ProjectMember {
@@ -116,9 +117,11 @@ model BookingParticipant {
   @@index([userId])
 }
 
-/// Misión general: recordatorio relevante o sesión recurrente predefinida por el admin.
+/// Actividad de un proyecto: recordatorio o sesión fija recurrente predefinida por el admin.
+/// Sin proyecto (projectId nulo) aplica a todo el club.
 model Mission {
   id          String      @id @default(cuid())
+  projectId   String?
   title       String
   description String?
   type        MissionType @default(REMINDER)
@@ -138,20 +141,20 @@ model Mission {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  createdBy User @relation(fields: [createdById], references: [id])
+  createdBy User     @relation(fields: [createdById], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 /// Configuración única del laboratorio (fila con id = 1).
 model LabSettings {
   id                    Int      @id @default(1)
-  capacity              Int      @default(4)
   openMinute            Int      @default(480)
   closeMinute           Int      @default(1260)
   /// Días abiertos, 0 = domingo ... 6 = sábado.
   openDays              Int[]    @default([1, 2, 3, 4, 5])
   slotMinutes           Int      @default(30)
-  /// Tope semanal de horas por miembro (referencia y límite para el calendario recomendado)
-  maxWeeklyMinutes      Int      @default(600)
   /// Calendario recomendado: horas de sesión de equipo por proyecto a la semana y duración de cada sesión
   projectWeeklyMinutes  Int      @default(240)
   projectSessionMinutes Int      @default(120)

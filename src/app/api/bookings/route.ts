@@ -2,18 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { badRequest, parseBody, requireUser, route } from "@/lib/api";
 import { bookingInclude } from "@/lib/bookings";
-import { assertCapacity, assertParticipantsFree, validateSlot } from "@/lib/rules";
+import { assertParticipantsFree, validateSlot } from "@/lib/rules";
 import { bookingCreateSchema } from "@/lib/validation";
 
 /**
  * Crear una reserva (lab, sesión de proyecto o trabajo asíncrono). Un miembro reserva para sí mismo;
- * un admin puede asignarla a quien sea. El trabajo asíncrono no ocupa cupo del lab.
- * `?force=1` (sólo admin) permite rebasar el cupo del lab.
+ * un admin puede asignarla a quien sea. El lab no tiene cupo: pueden coincidir los grupos que sea.
  */
 export const POST = route(async (req) => {
   const me = await requireUser();
   const isAdmin = me.role === "ADMIN";
-  const force = isAdmin && new URL(req.url).searchParams.get("force") === "1";
   const data = await parseBody(req, bookingCreateSchema);
 
   const participantIds = isAdmin && data.participantIds ? [...new Set(data.participantIds)] : [me.id];
@@ -26,7 +24,6 @@ export const POST = route(async (req) => {
     { userId: me.id, requireMembership: !isAdmin },
   );
   await assertParticipantsFree(participantIds, data.start, data.end);
-  if (!force && data.kind !== "ASYNC") await assertCapacity(participantIds.length, data.start, data.end);
 
   const booking = await prisma.booking.create({
     data: {

@@ -8,7 +8,7 @@ import { proposePersonal } from "@/lib/scheduler";
 import { planProposeSchema } from "@/lib/validation";
 
 /**
- * Propuesta personal: con el horario Ibero del miembro, sus reservas y las misiones generales,
+ * Propuesta personal: con el horario Ibero del miembro, sus reservas y las sesiones fijas de sus proyectos,
  * acomoda las horas semanales que eligió en los huecos libres (no guarda nada).
  */
 export const POST = route(async (req) => {
@@ -27,7 +27,7 @@ export const POST = route(async (req) => {
       where: { start: { lt: end }, end: { gt: start }, kind: { not: "ASYNC" } },
       select: { start: true, end: true, _count: { select: { participants: true } } },
     }),
-    missionOccurrences(start, end, tz),
+    missionOccurrences(start, end, tz, me.id),
   ]);
   const classes = iberoClasses(user, start, end, tz);
 
@@ -59,7 +59,12 @@ export const POST = route(async (req) => {
         title: b.project?.name ?? (b.kind === "ASYNC" ? "Asíncrono" : "Lab"),
         type: "booking" as const,
       })),
-      ...missions.map((m) => ({ start: m.start, end: m.end, title: m.title, type: "mission" as const })),
+      ...missions.map((m) => ({
+        start: m.start,
+        end: m.end,
+        title: m.projectName ? `${m.projectName}: ${m.title}` : m.title,
+        type: "mission" as const,
+      })),
     ],
   });
 });

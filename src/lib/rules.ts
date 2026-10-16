@@ -57,37 +57,3 @@ export async function assertParticipantsFree(userIds: string[], start: Date, end
   });
   if (clash) throw conflict(`${clash.user.name} ya tiene otra reserva que se cruza con ese horario`);
 }
-
-/** Máximo de personas simultáneas en el lab durante el intervalo (el trabajo asíncrono no cuenta). */
-export async function peakOccupancy(start: Date, end: Date, excludeBookingId?: string) {
-  const rows = await prisma.booking.findMany({
-    where: {
-      start: { lt: end },
-      end: { gt: start },
-      kind: { not: "ASYNC" },
-      ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
-    },
-    select: { start: true, end: true, _count: { select: { participants: true } } },
-  });
-  const events = rows.flatMap((r) => [
-    { t: Math.max(r.start.getTime(), start.getTime()), d: r._count.participants },
-    { t: Math.min(r.end.getTime(), end.getTime()), d: -r._count.participants },
-  ]);
-  events.sort((a, b) => a.t - b.t || a.d - b.d);
-  let current = 0;
-  let peak = 0;
-  for (const e of events) {
-    current += e.d;
-    peak = Math.max(peak, current);
-  }
-  return peak;
-}
-
-/** Lanza 409 si agregar `people` personas rebasa el cupo del lab en ese horario. */
-export async function assertCapacity(people: number, start: Date, end: Date, excludeBookingId?: string) {
-  const { capacity } = await getSettings();
-  const peak = await peakOccupancy(start, end, excludeBookingId);
-  if (peak + people > capacity) {
-    throw conflict(`El lab ya está lleno en parte de ese horario (${peak} de ${capacity} personas)`);
-  }
-}

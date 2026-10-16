@@ -11,7 +11,8 @@ export function rangeBounds(fromKey: string, toKey: string) {
   const tz = appTimeZone();
   const start = fromLocal(fromKey, 0, tz);
   const end = fromLocal(addDaysToKey(toKey, 1), 0, tz);
-  if (end.getTime() - start.getTime() > 1000 * 60 * 60 * 24 * 32) throw badRequest("El rango máximo es de 31 días");
+  // Sin límite mensual: se puede planear todo el semestre (sólo un tope de un año por rendimiento).
+  if (end.getTime() - start.getTime() > 1000 * 60 * 60 * 24 * 367) throw badRequest("El rango máximo es de un año");
   return { start, end, tz };
 }
 
@@ -60,9 +61,16 @@ export async function buildRecommendation(fromKey: string, toKey: string, replac
         participantIds: b.participants.map((p) => p.userId),
         occupiesLab: b.kind !== "ASYNC",
       })),
-      // Clases Ibero de cada quien y sesiones generales (para todos): bloquean personas, no el lab.
+      // Clases Ibero de cada quien: bloquean a la persona, no el lab.
       ...classes.map((c) => ({ start: c.start, end: c.end, participantIds: [c.userId], occupiesLab: false })),
-      ...missions.map((m) => ({ start: m.start, end: m.end, participantIds: activeIds, occupiesLab: false })),
+      // Sesiones fijas de proyecto: ocupan a sus integrantes y cuentan para la meta semanal del proyecto.
+      ...missions.map((m) => ({
+        start: m.start,
+        end: m.end,
+        projectId: m.projectId,
+        participantIds: m.projectId ? m.memberIds : activeIds,
+        occupiesLab: m.projectId !== null,
+      })),
     ],
   });
 

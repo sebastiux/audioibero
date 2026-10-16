@@ -35,12 +35,10 @@ export default async function MembersPage() {
       meId={admin.id}
       users={users.map((u) => ({ ...u, createdAt: u.createdAt.toISOString(), weekMinutes: minutes.get(u.id) ?? 0 }))}
       settings={{
-        capacity: settings.capacity,
         openMinute: settings.openMinute,
         closeMinute: settings.closeMinute,
         openDays: settings.openDays,
         slotMinutes: settings.slotMinutes,
-        maxWeeklyMinutes: settings.maxWeeklyMinutes,
         projectWeeklyMinutes: settings.projectWeeklyMinutes,
         projectSessionMinutes: settings.projectSessionMinutes,
       }}

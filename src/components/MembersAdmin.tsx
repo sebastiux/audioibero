@@ -16,18 +16,15 @@ type UserRow = {
 };
 
 type Settings = {
-  capacity: number;
   openMinute: number;
   closeMinute: number;
   openDays: number[];
   slotMinutes: number;
-  maxWeeklyMinutes: number;
   projectWeeklyMinutes: number;
   projectSessionMinutes: number;
 };
 
 export function MembersAdmin({ meId, users, settings }: { meId: string; users: UserRow[]; settings: Settings }) {
-  const maxWeekly = settings.maxWeeklyMinutes;
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -83,10 +80,7 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
                       <option value="ADMIN">Admin</option>
                     </select>
                   </td>
-                  <td className={`px-4 py-3 ${u.weekMinutes > maxWeekly ? "font-semibold text-red-700" : ""}`}>
-                    {formatHours(u.weekMinutes)}
-                    {u.weekMinutes > maxWeekly && <span className="ml-1 text-xs">(sobre el tope)</span>}
-                  </td>
+                  <td className="px-4 py-3">{formatHours(u.weekMinutes)}</td>
                   <td className="px-4 py-3 text-right">
                     <button className="btn-ghost py-1" disabled={u.id === meId} onClick={() => update(u.id, { active: !u.active })}>
                       {u.active ? "Desactivar" : "Reactivar"}
@@ -170,7 +164,6 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <NumberField label="Cupo simultáneo" value={s.capacity} min={1} max={100} onChange={(v) => set("capacity", v)} suffix="personas" />
         <div>
           <label className="label">Bloques de</label>
           <select className="input" value={s.slotMinutes} onChange={(e) => set("slotMinutes", Number(e.target.value))}>
@@ -179,14 +172,6 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
             <option value={60}>60 min</option>
           </select>
         </div>
-        <NumberField
-          label="Tope semanal"
-          value={s.maxWeeklyMinutes / 60}
-          min={1}
-          max={168}
-          onChange={(v) => set("maxWeeklyMinutes", v * 60)}
-          suffix="h / persona"
-        />
       </div>
       <div className="border-t border-zinc-100 pt-4">
         <h3 className="text-sm font-semibold">Calendario recomendado</h3>

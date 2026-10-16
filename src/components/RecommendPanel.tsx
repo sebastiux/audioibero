@@ -39,7 +39,7 @@ function nextWeek() {
 export function RecommendPanel({
   lab,
 }: {
-  lab: LabConfig & { maxWeeklyMinutes: number; projectWeeklyMinutes: number; projectSessionMinutes: number };
+  lab: LabConfig & { projectWeeklyMinutes: number; projectSessionMinutes: number };
 }) {
   const initial = nextWeek();
   const [from, setFrom] = useState(initial.from);
@@ -132,8 +132,8 @@ export function RecommendPanel({
         <p className="mt-1 max-w-3xl text-sm text-zinc-500">
           Propone sesiones de equipo para cada proyecto activo ({formatHours(lab.projectWeeklyMinutes)} a la semana en bloques de{" "}
           {formatHours(lab.projectSessionMinutes)}). Busca horarios en los que el equipo no tenga otras reservas, repartidos en días
-          distintos y en las horas menos ocupadas, sin rebasar el cupo ({lab.capacity}), el horario ({minutesToHHMM(lab.openMinute)}–
-          {minutesToHHMM(lab.closeMinute)}) ni el tope de {formatHours(lab.maxWeeklyMinutes)} por persona.{" "}
+          distintos y en las horas menos concurridas, dentro del horario ({minutesToHHMM(lab.openMinute)}–
+          {minutesToHHMM(lab.closeMinute)}).{" "}
           <Link href="/admin/miembros" className="font-medium text-brand hover:underline">Ajustar reglas</Link>
         </p>
       </div>

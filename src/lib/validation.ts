@@ -58,12 +58,10 @@ export const userUpdateSchema = z.object({
 
 export const settingsSchema = z
   .object({
-    capacity: z.number().int().min(1).max(100),
     openMinute: z.number().int().min(0).max(1440),
     closeMinute: z.number().int().min(0).max(1440),
     openDays: z.array(z.number().int().min(0).max(6)).min(1, "Elige al menos un día"),
     slotMinutes: z.union([z.literal(15), z.literal(30), z.literal(60)]),
-    maxWeeklyMinutes: z.number().int().min(30).max(10080),
     projectWeeklyMinutes: z.number().int().min(0).max(10080),
     projectSessionMinutes: z.number().int().min(30).max(720),
   })
@@ -83,7 +81,7 @@ export const applySchema = z.object({
         reason: z.string().max(200).optional(),
       }),
     )
-    .max(1000),
+    .max(5000),
 });
 
 export const userCreateSchema = z.object({
@@ -97,6 +95,7 @@ const minuteOfDay = z.number().int().min(0).max(1440);
 
 export const missionSchema = z
   .object({
+    projectId: z.string().min(1).nullish(),
     title: z.string().trim().min(2, "Escribe un título").max(140),
     description: z.string().trim().max(4000).nullish(),
     type: z.enum(["REMINDER", "RECURRING"]),
@@ -124,7 +123,7 @@ export const missionSchema = z
 export const planProposeSchema = z.object({
   from: dateKey,
   to: dateKey,
-  weeklyHours: z.number().min(0.5).max(80),
+  weeklyHours: z.number().min(0.5).max(168),
   blockMinutes: z.number().int().min(30).max(480),
   kind: slotKind.default("LAB"),
 });
@@ -133,5 +132,5 @@ export const planApplySchema = z.object({
   kind: slotKind.default("LAB"),
   projectId: z.string().min(1).nullish(),
   notes: z.string().trim().max(500).nullish(),
-  blocks: z.array(z.object({ start: dateTime, end: dateTime })).min(1).max(100),
+  blocks: z.array(z.object({ start: dateTime, end: dateTime })).min(1).max(2000),
 });

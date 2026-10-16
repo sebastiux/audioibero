@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { conflict, forbidden, notFound, requireUser, route, type IdParams } from "@/lib/api";
 import { bookingInclude } from "@/lib/bookings";
-import { assertCapacity, assertParticipantsFree } from "@/lib/rules";
+import { assertParticipantsFree } from "@/lib/rules";
 
 /** Unirse a una reserva existente (p. ej. a la sesión de un proyecto). */
 export const POST = route<IdParams>(async (_req, { params }) => {
@@ -26,7 +26,6 @@ export const POST = route<IdParams>(async (_req, { params }) => {
   }
 
   await assertParticipantsFree([me.id], booking.start, booking.end);
-  if (booking.kind !== "ASYNC") await assertCapacity(1, booking.start, booking.end);
 
   await prisma.bookingParticipant.create({ data: { bookingId: id, userId: me.id } });
   const updated = await prisma.booking.findUnique({ where: { id }, include: bookingInclude });

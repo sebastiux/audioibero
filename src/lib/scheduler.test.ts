@@ -4,12 +4,10 @@ import { fromLocal, toLocalParts } from "./time";
 
 const TZ = "America/Mexico_City";
 const settings: SchedulerSettings = {
-  capacity: 4,
   openMinute: 9 * 60,
   closeMinute: 21 * 60,
   openDays: [1, 2, 3, 4, 5],
   slotMinutes: 30,
-  maxWeeklyMinutes: 600,
   projectWeeklyMinutes: 240,
   projectSessionMinutes: 120,
 };
@@ -51,17 +49,20 @@ describe("recommendSchedule", () => {
     expect(local(res.proposals[0].start)).toBe("2026-10-19 12:00");
   });
 
-  it("no rebasa el cupo del lab y reporta lo que no cupo", () => {
-    const res = recommendSchedule({
-      ...week,
-      toKey: "2026-10-19",
-      settings: { ...settings, capacity: 3, openMinute: 9 * 60, closeMinute: 11 * 60, projectWeeklyMinutes: 120 },
-      projects: [{ id: "p", name: "Disco", memberIds: ["a", "b"] }],
-      existing: [{ participantIds: ["x", "y"], start: at("2026-10-19", "09:00"), end: at("2026-10-19", "11:00") }],
+  it("el lab no tiene cupo: prefiere horas menos concurridas pero no se bloquea", () => {
+    const crowd = (from: string, to: string) => ({
+      participantIds: ["x", "y", "z", "w", "v"],
+      start: at("2026-10-19", from),
+      end: at("2026-10-19", to),
     });
-    // 2 personas ya ocupan el lab y el cupo es 3: el proyecto (mín. 2) no cabe.
-    expect(res.proposals).toHaveLength(0);
-    expect(res.shortfall).toEqual([{ projectId: "p", missingMinutes: 120 }]);
+    const oneDay = { ...week, toKey: "2026-10-19", projects: [{ id: "p", name: "Disco", memberIds: ["a", "b"] }] };
+    // Mucha gente de 9 a 11: la sesión se va a la siguiente hora libre.
+    const res = recommendSchedule({ ...oneDay, settings: { ...settings, projectWeeklyMinutes: 120 }, existing: [crowd("09:00", "11:00")] });
+    expect(local(res.proposals[0].start)).toBe("2026-10-19 11:00");
+    // Aunque el lab esté concurrido todo el día, igual se agenda.
+    const full = recommendSchedule({ ...oneDay, settings: { ...settings, projectWeeklyMinutes: 120 }, existing: [crowd("09:00", "21:00")] });
+    expect(full.proposals).toHaveLength(1);
+    expect(full.shortfall).toEqual([]);
   });
 
   it("cuenta las sesiones del proyecto que ya existen", () => {
@@ -75,14 +76,15 @@ describe("recommendSchedule", () => {
     expect(local(res.proposals[0].start).slice(0, 10)).not.toBe("2026-10-20");
   });
 
-  it("respeta el tope semanal por miembro", () => {
-    const res = recommendSchedule({
-      ...week,
-      settings: { ...settings, maxWeeklyMinutes: 120 },
-      projects: [{ id: "p", name: "Disco", memberIds: ["a"] }],
-    });
-    expect(res.minutesByUser).toEqual({ a: 120 });
-    expect(res.shortfall).toEqual([{ projectId: "p", missingMinutes: 120 }]);
+  it("no hay tope semanal: un miembro con muchas horas igual recibe sus sesiones", () => {
+    const busyWeek = ["2026-10-19", "2026-10-20", "2026-10-21"].map((d) => ({
+      participantIds: ["a"],
+      start: at(d, "09:00"),
+      end: at(d, "13:00"),
+    }));
+    const res = recommendSchedule({ ...week, settings, projects: [{ id: "p", name: "Disco", memberIds: ["a"] }], existing: busyWeek });
+    expect(res.minutesByUser).toEqual({ a: 240 });
+    expect(res.shortfall).toEqual([]);
   });
 });
 
@@ -94,7 +96,7 @@ describe("proposePersonal", () => {
     fromKey: "2026-10-19",
     toKey: "2026-10-25",
     timeZone: TZ,
-    settings: { capacity: 2, openMinute: 9 * 60, closeMinute: 21 * 60, openDays: [1, 2, 3, 4, 5], slotMinutes: 30 },
+    settings: { openMinute: 9 * 60, closeMinute: 21 * 60, openDays: [1, 2, 3, 4, 5], slotMinutes: 30 },
     blockMinutes: 120,
     usesLab: true,
     labBookings: [],
@@ -117,11 +119,18 @@ describe("proposePersonal", () => {
     expect(res.missing).toEqual({});
   });
 
-  it("respeta el cupo del lab sólo si el trabajo es en el lab", () => {
-    const full = { start: at("2026-10-19", "09:00"), end: at("2026-10-19", "21:00"), people: 2 };
-    const oneDay = { ...base, toKey: "2026-10-19", weeklyMinutes: 120, busy: [], labBookings: [full] };
-    expect(proposePersonal(oneDay).blocks).toHaveLength(0);
-    expect(proposePersonal({ ...oneDay, usesLab: false }).blocks).toHaveLength(1);
+  it("no hay cupo: un lab lleno no impide proponer, sólo se prefiere otra hora", () => {
+    const busyMorning = { start: at("2026-10-19", "09:00"), end: at("2026-10-19", "13:00"), people: 20 };
+    const allDay = { start: at("2026-10-19", "09:00"), end: at("2026-10-19", "21:00"), people: 20 };
+    const oneDay = { ...base, toKey: "2026-10-19", weeklyMinutes: 120, busy: [] };
+    expect(local(proposePersonal({ ...oneDay, labBookings: [busyMorning] }).blocks[0].start)).toBe("2026-10-19 13:00");
+    expect(proposePersonal({ ...oneDay, labBookings: [allDay] }).blocks).toHaveLength(1);
+  });
+
+  it("puede planear todo un semestre: cada semana recibe sus horas", () => {
+    const res = proposePersonal({ ...base, fromKey: "2026-08-10", toKey: "2026-12-05", weeklyMinutes: 240, busy: [] });
+    expect(res.blocks).toHaveLength(17 * 2);
+    expect(res.missing).toEqual({});
   });
 });
 

@@ -5,7 +5,6 @@ export type Me = { id: string; name: string; role: Role };
 export type UserOption = { id: string; name: string };
 export type ProjectOption = { id: string; name: string; color: string; memberIds: string[] };
 export type LabConfig = {
-  capacity: number;
   openMinute: number;
   closeMinute: number;
   openDays: number[];
@@ -25,10 +24,19 @@ export type BookingItem = {
   participants: { userId: string; user: { id: string; name: string } }[];
 };
 
-export type MissionOccurrenceItem = { missionId: string; title: string; start: string; end: string };
+export type MissionOccurrenceItem = {
+  missionId: string;
+  title: string;
+  start: string;
+  end: string;
+  projectId: string | null;
+  projectName: string | null;
+  projectColor: string | null;
+};
 
 export type MissionItem = {
   id: string;
+  projectId: string | null;
   title: string;
   description: string | null;
   type: "REMINDER" | "RECURRING";

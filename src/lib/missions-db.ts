@@ -5,6 +5,7 @@ import type { missionSchema } from "./validation";
 export function normalizeMission(data: z.infer<typeof missionSchema>) {
   const recurring = data.type === "RECURRING";
   return {
+    projectId: data.projectId || null,
     title: data.title,
     description: data.description || null,
     type: data.type,

@@ -27,7 +27,7 @@ function nextWeek() {
 const BUSY_STYLE: Record<Busy["type"], { bg: string; label: string }> = {
   class: { bg: "#a1a1aa", label: "Clase" },
   booking: { bg: "#71717a", label: "Ya reservado" },
-  mission: { bg: "#16161d", label: "Misión general" },
+  mission: { bg: "#16161d", label: "Sesión fija de proyecto" },
 };
 
 const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -53,6 +53,21 @@ export function PlanPanel(props: {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  /** Atajos de periodo; "Todo el semestre" llega hasta la última clase del PDF (o 16 semanas). */
+  function preset(kind: "week" | "month" | "semester") {
+    const start = new Date(`${nextWeek().from}T12:00:00`);
+    const end = new Date(start);
+    if (kind === "week") end.setDate(start.getDate() + 6);
+    else if (kind === "month") end.setDate(start.getDate() + 27);
+    else {
+      const last = (props.iberoClasses ?? []).map((c) => c.endsOn).sort().at(-1);
+      if (last && last > toDateInput(start)) end.setTime(new Date(`${last}T12:00:00`).getTime());
+      else end.setDate(start.getDate() + 16 * 7 - 1);
+    }
+    setFrom(toDateInput(start));
+    setTo(toDateInput(end));
+  }
 
   const totalMinutes = blocks.reduce((a, b) => a + (b.end.getTime() - b.start.getTime()) / 60000, 0);
 
@@ -98,7 +113,7 @@ export function PlanPanel(props: {
       setBusy(res.busy);
       setBlocks(res.blocks.map((b) => ({ key: ++keyRef.current, start: new Date(b.start), end: new Date(b.end) })));
       if (res.missingMinutes > 0) {
-        setMessage({ ok: false, text: `No cupieron ${formatHours(res.missingMinutes)}: no hay suficientes huecos libres en el horario del lab.` });
+        setMessage({ ok: false, text: `No cupieron ${formatHours(res.missingMinutes)}: no hay suficientes huecos libres en el horario del lab entre tus clases.` });
       }
     } catch (err) {
       setMessage({ ok: false, text: (err as Error).message });
@@ -166,8 +181,9 @@ export function PlanPanel(props: {
         <div>
           <h1 className="text-2xl font-bold">Mi plan</h1>
           <p className="mt-1 max-w-3xl text-sm text-zinc-500">
-            Sube tu PDF de materias inscritas, di cuántas horas quieres dedicarle al club y te proponemos horarios que no choquen con
-            tus clases, cerca de ellas y donde el lab tenga lugar. Arrastra los bloques para ajustarlos y luego resérvalos.
+            Sube tu PDF de materias inscritas, di cuántas horas a la semana quieres dedicarle al club y para qué periodo (una semana o
+            todo el semestre) y te proponemos horarios que no choquen con tus clases ni con las sesiones fijas de tus proyectos. Arrastra
+            los bloques para ajustarlos y luego resérvalos.
           </p>
         </div>
         <a className="btn-ghost" href="/api/me/export" download>⤓ Exportar mis reservas (.ics)</a>
@@ -180,7 +196,7 @@ export function PlanPanel(props: {
             <p className="text-sm text-zinc-500">
               {props.iberoUpdatedAt
                 ? `Guardado el ${new Date(props.iberoUpdatedAt).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}. Súbelo de nuevo si cambió.`
-                : "Sube el PDF de “Materias inscritas”. Sin él, la propuesta sólo evita tus reservas y las misiones generales."}
+                : "Sube el PDF de “Materias inscritas”. Sin él, la propuesta sólo evita tus reservas y las sesiones fijas de tus proyectos."}
             </p>
           </div>
           <div className="flex gap-2">
@@ -243,7 +259,15 @@ export function PlanPanel(props: {
       </section>
 
       <form onSubmit={propose} className="card space-y-4 p-5">
-        <h2 className="font-semibold">2 · ¿Cuántas horas quieres?</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">2 · ¿Cuántas horas quieres?</h2>
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            <span className="self-center text-zinc-500">Periodo:</span>
+            <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => preset("week")}>Próxima semana</button>
+            <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => preset("month")}>4 semanas</button>
+            <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => preset("semester")}>Todo el semestre</button>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
           <div>
             <label className="label">Desde</label>
@@ -255,7 +279,7 @@ export function PlanPanel(props: {
           </div>
           <div>
             <label className="label">Horas / semana</label>
-            <input className="input" type="number" min={0.5} max={80} step={0.5} value={hours} onChange={(e) => setHours(Number(e.target.value))} required />
+            <input className="input" type="number" min={0.5} max={168} step={0.5} value={hours} onChange={(e) => setHours(Number(e.target.value))} required />
           </div>
           <div>
             <label className="label">Bloques de</label>

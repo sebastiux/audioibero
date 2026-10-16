@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/client";
-import type { Me, UserOption } from "@/lib/types";
+import type { Me, MissionItem, UserOption } from "@/lib/types";
+import { ActivityDialog, activitySchedule, fmtDay } from "./ActivityDialog";
 import { Modal } from "./Modal";
 
 export type ProjectRow = {
@@ -19,10 +20,107 @@ export type ProjectRow = {
 
 const PALETTE = ["#c8102e", "#7c3aed", "#2563eb", "#0891b2", "#059669", "#ca8a04", "#ea580c", "#db2777"];
 
-export function ProjectsManager({ me, projects, users }: { me: Me; projects: ProjectRow[]; users: UserOption[] }) {
+type ActivityEdit = { mission: MissionItem | null; projectId: string | null; type: MissionItem["type"] };
+
+/** Sesiones fijas y recordatorios de un proyecto (o de todo el club). */
+function Activities({
+  items,
+  isAdmin,
+  projectId,
+  onEdit,
+}: {
+  items: MissionItem[];
+  isAdmin: boolean;
+  projectId: string | null;
+  onEdit: (e: ActivityEdit) => void;
+}) {
+  const sessions = items.filter((m) => m.type === "RECURRING");
+  const reminders = items.filter((m) => m.type === "REMINDER");
+  if (!isAdmin && items.length === 0) return null;
+  const today = new Date(new Date().toDateString());
+  return (
+    <div className="mt-4 space-y-3 border-t border-zinc-100 pt-3 text-sm">
+      {(sessions.length > 0 || isAdmin) && (
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">🔁 Sesiones fijas</span>
+            {isAdmin && (
+              <button className="text-xs font-medium text-brand hover:underline" onClick={() => onEdit({ mission: null, projectId, type: "RECURRING" })}>
+                + Agregar
+              </button>
+            )}
+          </div>
+          {sessions.length === 0 && <p className="text-xs text-zinc-400">Sin sesiones fijas.</p>}
+          <ul className="space-y-1">
+            {sessions.map((m) => (
+              <li key={m.id} className={`flex items-start justify-between gap-2 ${m.active ? "" : "opacity-50"}`}>
+                <span>
+                  <b>{m.title}</b> <span className="text-zinc-500">· {activitySchedule(m)}{m.kind === "ASYNC" ? " · remota" : ""}</span>
+                </span>
+                {isAdmin && (
+                  <button className="shrink-0 text-xs text-zinc-500 hover:underline" onClick={() => onEdit({ mission: m, projectId, type: m.type })}>
+                    Editar
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {(reminders.length > 0 || isAdmin) && (
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">📌 Recordatorios</span>
+            {isAdmin && (
+              <button className="text-xs font-medium text-brand hover:underline" onClick={() => onEdit({ mission: null, projectId, type: "REMINDER" })}>
+                + Agregar
+              </button>
+            )}
+          </div>
+          {reminders.length === 0 && <p className="text-xs text-zinc-400">Sin recordatorios.</p>}
+          <ul className="space-y-1.5">
+            {reminders.map((m) => (
+              <li key={m.id} className={`flex items-start justify-between gap-2 ${m.active ? "" : "opacity-50"}`}>
+                <span>
+                  {m.pinned && "📌 "}
+                  <b>{m.title}</b>
+                  {m.dueDate && (
+                    <span className={`first-letter:uppercase ${new Date(m.dueDate) < today ? "text-zinc-400 line-through" : "text-brand"}`}>
+                      {" "}· {fmtDay(m.dueDate)}
+                    </span>
+                  )}
+                  {m.description && <span className="block whitespace-pre-wrap text-xs text-zinc-600">{m.description}</span>}
+                </span>
+                {isAdmin && (
+                  <button className="shrink-0 text-xs text-zinc-500 hover:underline" onClick={() => onEdit({ mission: m, projectId, type: m.type })}>
+                    Editar
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ProjectsManager({
+  me,
+  projects,
+  users,
+  activities,
+}: {
+  me: Me;
+  projects: ProjectRow[];
+  users: UserOption[];
+  activities: MissionItem[];
+}) {
   const router = useRouter();
   const isAdmin = me.role === "ADMIN";
   const [editing, setEditing] = useState<ProjectRow | "new" | null>(null);
+  const [activity, setActivity] = useState<ActivityEdit | null>(null);
+  const clubActivities = activities.filter((a) => a.projectId === null);
   const [showArchived, setShowArchived] = useState(false);
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const visible = projects.filter((p) => showArchived || p.active);
@@ -42,7 +140,8 @@ export function ProjectsManager({ me, projects, users }: { me: Me; projects: Pro
         <div>
           <h1 className="text-2xl font-bold">Proyectos</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Proyectos de equipo del club. Abre una sesión de proyecto en el calendario y tu equipo podrá unirse al mismo horario.
+            Proyectos de equipo del club. Cada uno tiene sus sesiones fijas (se repiten cada semana) y recordatorios; además puedes
+            abrir sesiones extra en el calendario y tu equipo se une al mismo horario.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -53,6 +152,14 @@ export function ProjectsManager({ me, projects, users }: { me: Me; projects: Pro
           {isAdmin && <button className="btn-primary" onClick={() => setEditing("new")}>+ Nuevo proyecto</button>}
         </div>
       </div>
+
+      {(isAdmin || clubActivities.length > 0) && (
+        <article className="card p-5">
+          <h2 className="font-semibold">Todo el club</h2>
+          <p className="text-sm text-zinc-500">Sesiones y recordatorios que aplican a todos los miembros.</p>
+          <Activities items={clubActivities} isAdmin={isAdmin} projectId={null} onEdit={setActivity} />
+        </article>
+      )}
 
       {visible.length === 0 && (
         <div className="card p-10 text-center text-sm text-zinc-500">
@@ -87,6 +194,12 @@ export function ProjectsManager({ me, projects, users }: { me: Me; projects: Pro
                     <span key={id} className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs">{userName.get(id) ?? "Inactivo"}</span>
                   ))}
                 </div>
+                <Activities
+                  items={activities.filter((a) => a.projectId === p.id)}
+                  isAdmin={isAdmin}
+                  projectId={p.id}
+                  onEdit={setActivity}
+                />
                 {isAdmin && (
                   <div className="mt-auto flex gap-2 pt-5">
                     <button className="btn-ghost py-1.5" onClick={() => setEditing(p)}>Editar</button>
@@ -98,6 +211,19 @@ export function ProjectsManager({ me, projects, users }: { me: Me; projects: Pro
           );
         })}
       </div>
+
+      {activity && (
+        <ActivityDialog
+          mission={activity.mission}
+          projectId={activity.projectId}
+          defaultType={activity.type}
+          onClose={() => setActivity(null)}
+          onSaved={() => {
+            setActivity(null);
+            router.refresh();
+          }}
+        />
+      )}
 
       {editing && (
         <ProjectDialog

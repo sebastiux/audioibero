@@ -6,6 +6,6 @@ export const metadata = { title: "Calendario · Audio Ibero" };
 
 export default async function CalendarPage() {
   const user = await requirePageUser();
-  const ctx = await loadCalendarContext();
+  const ctx = await loadCalendarContext(user);
   return <CalendarView me={{ id: user.id, name: user.name, role: user.role }} {...ctx} />;
 }

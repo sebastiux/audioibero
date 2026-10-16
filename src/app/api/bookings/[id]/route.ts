@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { badRequest, forbidden, notFound, parseBody, requireAdmin, requireUser, route, type IdParams } from "@/lib/api";
 import { bookingInclude } from "@/lib/bookings";
-import { assertCapacity, assertParticipantsFree, validateSlot } from "@/lib/rules";
+import { assertParticipantsFree, validateSlot } from "@/lib/rules";
 import { bookingUpdateSchema } from "@/lib/validation";
 
 /** Mover o editar una reserva: quien la creó o un admin. Sólo un admin cambia participantes. */
@@ -10,7 +10,6 @@ export const PATCH = route<IdParams>(async (req, { params }) => {
   const me = await requireUser();
   const isAdmin = me.role === "ADMIN";
   const { id } = await params;
-  const force = isAdmin && new URL(req.url).searchParams.get("force") === "1";
 
   const current = await prisma.booking.findUnique({
     where: { id },
@@ -32,7 +31,6 @@ export const PATCH = route<IdParams>(async (req, { params }) => {
   };
   const { projectId } = await validateSlot(next, { userId: me.id, requireMembership: !isAdmin });
   await assertParticipantsFree(participantIds, next.start, next.end, id);
-  if (!force && next.kind !== "ASYNC") await assertCapacity(participantIds.length, next.start, next.end, id);
 
   const booking = await prisma.$transaction(async (tx) => {
     if (data.participantIds) {

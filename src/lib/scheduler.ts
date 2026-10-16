@@ -6,10 +6,9 @@ import { addDaysToKey, fromLocal, toLocalParts, weekKeyOf, weekdayOfKey } from "
  * Todos los miembros están disponibles por defecto; lo que limita son las reservas que ya
  * existen y el cupo del lab. Para cada proyecto activo propone sesiones de equipo hasta cubrir
  * las horas semanales configuradas:
- *  - en horario y días de apertura, sin rebasar el cupo simultáneo del lab,
+ *  - en horario y días de apertura (el lab no tiene cupo, sólo se prefieren horas menos concurridas),
  *  - sin cruzarse con reservas de los integrantes (si no caben todos, al menos la mitad del equipo),
- *  - repartidas en días distintos y en las horas menos ocupadas del lab,
- *  - sin pasar el tope semanal de horas de cada integrante.
+ *  - repartidas en días distintos y en las horas menos concurridas del lab.
  */
 
 export type SchedulerProject = {
@@ -19,12 +18,10 @@ export type SchedulerProject = {
 };
 
 export type SchedulerSettings = {
-  capacity: number;
   openMinute: number;
   closeMinute: number;
   openDays: number[];
   slotMinutes: number;
-  maxWeeklyMinutes: number;
   projectWeeklyMinutes: number;
   projectSessionMinutes: number;
 };
@@ -157,20 +154,14 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
           const sessionsThatDay = projectDays.get(project.id)?.get(day) ?? 0;
           for (let start = 0; start + sessionSlots <= nSlots; start++) {
             const members = team.filter((u) => {
-              if (weeklyMinutes(u, weekKey) + sessionMinutes > settings.maxWeeklyMinutes) return false;
               const b = busySet(u, day);
               for (let i = start; i < start + sessionSlots; i++) if (b.has(i)) return false;
               return true;
             });
             if (members.length < minTeam) continue;
-            let peak = 0;
             let total = 0;
-            for (let i = start; i < start + sessionSlots; i++) {
-              peak = Math.max(peak, l[i]);
-              total += l[i];
-            }
-            if (peak + members.length > settings.capacity) continue;
-            // Menor puntaje = mejor: más integrantes, días sin sesión del proyecto, lab menos lleno, más temprano.
+            for (let i = start; i < start + sessionSlots; i++) total += l[i];
+            // Menor puntaje = mejor: más integrantes, días sin sesión del proyecto, lab menos concurrido, más temprano.
             const score = -members.length * 1000 + sessionsThatDay * 500 + total * 10 + start * 0.01;
             if (!best || score < best.score) best = { day, start, members, score };
           }
@@ -218,16 +209,16 @@ export type PersonalInput = {
   fromKey: string;
   toKey: string;
   timeZone: string;
-  settings: Pick<SchedulerSettings, "capacity" | "openMinute" | "closeMinute" | "openDays" | "slotMinutes">;
+  settings: Pick<SchedulerSettings, "openMinute" | "closeMinute" | "openDays" | "slotMinutes">;
   /** Horas que el miembro quiere a la semana (en minutos) */
   weeklyMinutes: number;
   /** Duración de cada bloque (minutos) */
   blockMinutes: number;
-  /** Si el trabajo es en el lab, se respeta el cupo; si es asíncrono, no. */
+  /** Si el trabajo es en el lab se prefieren las horas menos concurridas (no hay cupo); si es asíncrono, da igual. */
   usesLab: boolean;
-  /** Lo que ocupa al miembro: clases Ibero, sus reservas, misiones generales */
+  /** Lo que ocupa al miembro: clases Ibero, sus reservas y las sesiones fijas de sus proyectos */
   busy: { start: Date; end: Date; isClass?: boolean }[];
-  /** Reservas de todo el club, para el cupo del lab */
+  /** Reservas de todo el club, para preferir horas menos concurridas */
   labBookings: { start: Date; end: Date; people: number }[];
 };
 
@@ -304,11 +295,11 @@ export function proposePersonal(input: PersonalInput): PersonalResult {
           let ok = true;
           let total = 0;
           for (let i = start; i < start + len && ok; i++) {
-            if (bz[i] || (input.usesLab && l[i] + 1 > settings.capacity)) ok = false;
+            if (bz[i]) ok = false;
             total += l[i];
           }
           if (!ok) continue;
-          // Menor = mejor: un bloque por día, días en que ya vas a la Ibero, pegado a una clase, lab menos lleno.
+          // Menor = mejor: un bloque por día, días en que ya vas a la Ibero, pegado a una clase, lab menos concurrido.
           const score =
             (perDay.get(day) ?? 0) * 1000 +
             (hasClass.has(day) ? 0 : 200) +

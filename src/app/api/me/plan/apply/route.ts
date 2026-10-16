@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { HttpError, parseBody, requireUser, route } from "@/lib/api";
-import { assertCapacity, assertParticipantsFree, validateSlot } from "@/lib/rules";
+import { assertParticipantsFree, validateSlot } from "@/lib/rules";
 import { planApplySchema } from "@/lib/validation";
 
 /** Crea las reservas del plan personal. Cada bloque se valida por separado; los que chocan se omiten. */
@@ -22,7 +22,6 @@ export const POST = route(async (req) => {
     try {
       await validateSlot({ ...block, kind: data.kind, projectId }, { userId: me.id, requireMembership: false });
       await assertParticipantsFree([me.id], block.start, block.end);
-      if (data.kind !== "ASYNC") await assertCapacity(1, block.start, block.end);
       await prisma.booking.create({
         data: {
           start: block.start,

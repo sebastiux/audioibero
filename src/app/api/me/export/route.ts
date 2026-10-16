@@ -30,7 +30,7 @@ function fold(line: string) {
   return parts.join("\r\n ");
 }
 
-/** Descarga .ics con mis reservas y las sesiones generales (de hace 30 días a 6 meses adelante). */
+/** Descarga .ics con mis reservas y las sesiones fijas de mis proyectos (de hace 30 días a 6 meses adelante). */
 export const GET = route(async () => {
   const me = await requireUser();
   const now = Date.now();
@@ -43,7 +43,7 @@ export const GET = route(async () => {
       include: { project: { select: { name: true } }, participants: { select: { user: { select: { name: true } } } } },
       orderBy: { start: "asc" },
     }),
-    missionOccurrences(from, to, appTimeZone()),
+    missionOccurrences(from, to, appTimeZone(), me.id),
   ]);
 
   const stamp = icsDate(new Date());
@@ -71,7 +71,7 @@ export const GET = route(async () => {
       `DTSTAMP:${stamp}`,
       `DTSTART:${icsDate(m.start)}`,
       `DTEND:${icsDate(m.end)}`,
-      `SUMMARY:${escape(`Misión general: ${m.title}`)}`,
+      `SUMMARY:${escape(m.projectName ? `${m.projectName}: ${m.title}` : m.title)}`,
       "END:VEVENT",
     );
   }

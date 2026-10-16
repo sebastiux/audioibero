@@ -1,95 +1,37 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, hhmmToMinutes, minutesToHHMM, WEEKDAYS } from "@/lib/client";
-import type { Me, MissionItem } from "@/lib/types";
+import type { MissionItem } from "@/lib/types";
 import { Modal } from "./Modal";
 
-const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
-const fmtDay = (iso: string) => new Date(iso).toLocaleDateString("es-MX", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
+/** Actividades de proyecto: recordatorios y sesiones fijas que se repiten cada semana (las define el admin). */
 
-function schedule(m: MissionItem) {
+const dateOnly = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+export const fmtDay = (iso: string) => new Date(iso).toLocaleDateString("es-MX", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
+
+export function activitySchedule(m: MissionItem) {
   const days = [1, 2, 3, 4, 5, 6, 0].filter((d) => m.weekdays.includes(d)).map((d) => WEEKDAYS[d]);
   const hours = m.startMinute != null && m.endMinute != null ? `${minutesToHHMM(m.startMinute)}–${minutesToHHMM(m.endMinute)}` : "";
   const range = [m.startsOn && `desde ${fmtDay(m.startsOn)}`, m.endsOn && `hasta ${fmtDay(m.endsOn)}`].filter(Boolean).join(" ");
   return `${days.join(", ")} · ${hours}${range ? ` · ${range}` : ""}`;
 }
 
-export function MissionsManager({ me, missions }: { me: Me; missions: MissionItem[] }) {
-  const router = useRouter();
-  const isAdmin = me.role === "ADMIN";
-  const [editing, setEditing] = useState<MissionItem | "new" | null>(null);
-  const reminders = missions.filter((m) => m.type === "REMINDER");
-  const recurring = missions.filter((m) => m.type === "RECURRING");
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Misiones generales</h1>
-          <p className="mt-1 text-sm text-zinc-500">Recordatorios relevantes del club y sesiones generales que se repiten cada semana.</p>
-        </div>
-        {isAdmin && <button className="btn-primary" onClick={() => setEditing("new")}>+ Nueva misión</button>}
-      </div>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Recordatorios</h2>
-        {reminders.length === 0 && <p className="card p-6 text-sm text-zinc-500">No hay recordatorios por ahora.</p>}
-        {reminders.map((m) => (
-          <article key={m.id} className={`card p-5 ${m.active ? "" : "opacity-50"} ${m.pinned ? "border-amber-300 bg-amber-50/60" : ""}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">{m.pinned && "📌 "}{m.title}</h3>
-                {m.dueDate && (
-                  <p className={`mt-0.5 text-sm first-letter:uppercase ${new Date(m.dueDate) < new Date(new Date().toDateString()) ? "text-zinc-400 line-through" : "text-brand"}`}>
-                    {fmtDay(m.dueDate)}
-                  </p>
-                )}
-              </div>
-              {isAdmin && <button className="btn-ghost py-1" onClick={() => setEditing(m)}>Editar</button>}
-            </div>
-            {m.description && <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">{m.description}</p>}
-          </article>
-        ))}
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Sesiones generales recurrentes</h2>
-        {recurring.length === 0 && <p className="card p-6 text-sm text-zinc-500">No hay sesiones generales definidas.</p>}
-        <div className="grid gap-3 sm:grid-cols-2">
-          {recurring.map((m) => (
-            <article key={m.id} className={`card p-5 ${m.active ? "" : "opacity-50"}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">⭐ {m.title}</h3>
-                  <p className="mt-0.5 text-sm text-zinc-600">{schedule(m)}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">{m.kind === "ASYNC" ? "🌐 Remota" : "🎛️ En el lab"}{m.active ? "" : " · inactiva"}</p>
-                </div>
-                {isAdmin && <button className="btn-ghost py-1" onClick={() => setEditing(m)}>Editar</button>}
-              </div>
-              {m.description && <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">{m.description}</p>}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {editing && (
-        <MissionDialog
-          mission={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            router.refresh();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function MissionDialog({ mission, onClose, onSaved }: { mission: MissionItem | null; onClose: () => void; onSaved: () => void }) {
-  const [type, setType] = useState<MissionItem["type"]>(mission?.type ?? "REMINDER");
+export function ActivityDialog({
+  mission,
+  projectId,
+  defaultType = "REMINDER",
+  onClose,
+  onSaved,
+}: {
+  mission: MissionItem | null;
+  /** Proyecto al que pertenece (null = todo el club) */
+  projectId: string | null;
+  defaultType?: MissionItem["type"];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [type, setType] = useState<MissionItem["type"]>(mission?.type ?? defaultType);
   const [title, setTitle] = useState(mission?.title ?? "");
   const [description, setDescription] = useState(mission?.description ?? "");
   const [pinned, setPinned] = useState(mission?.pinned ?? false);
@@ -111,6 +53,7 @@ function MissionDialog({ mission, onClose, onSaved }: { mission: MissionItem | n
     setSaving(true);
     setError(null);
     const body = {
+      projectId: mission ? mission.projectId : projectId,
       title,
       description: description || null,
       type,
@@ -144,19 +87,19 @@ function MissionDialog({ mission, onClose, onSaved }: { mission: MissionItem | n
   }
 
   return (
-    <Modal title={mission ? "Editar misión" : "Nueva misión general"} onClose={onClose}>
+    <Modal title={mission ? "Editar actividad" : type === "RECURRING" ? "Nueva sesión fija" : "Nuevo recordatorio"} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 rounded-lg bg-zinc-100 p-1 text-sm font-medium">
           {(["REMINDER", "RECURRING"] as const).map((t) => (
             <button type="button" key={t} onClick={() => setType(t)} className={`rounded-md py-1.5 ${type === t ? "bg-white shadow-sm" : "text-zinc-500"}`}>
-              {t === "REMINDER" ? "📌 Recordatorio" : "🔁 Sesión recurrente"}
+              {t === "REMINDER" ? "📌 Recordatorio" : "🔁 Sesión fija semanal"}
             </button>
           ))}
         </div>
         <div>
           <label className="label">Título</label>
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} required minLength={2} maxLength={140}
-            placeholder={type === "REMINDER" ? "Ej. Entregar mezclas del EP" : "Ej. Junta general del club"} />
+            placeholder={type === "REMINDER" ? "Ej. Entregar mezclas del EP" : "Ej. Ensayo del equipo"} />
         </div>
         <div>
           <label className="label">Descripción</label>

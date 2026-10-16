@@ -10,12 +10,10 @@ export default async function RecommendPage() {
   return (
     <RecommendPanel
       lab={{
-        capacity: s.capacity,
         openMinute: s.openMinute,
         closeMinute: s.closeMinute,
         openDays: s.openDays,
         slotMinutes: s.slotMinutes,
-        maxWeeklyMinutes: s.maxWeeklyMinutes,
         projectWeeklyMinutes: s.projectWeeklyMinutes,
         projectSessionMinutes: s.projectSessionMinutes,
       }}

@@ -19,8 +19,8 @@ type Props = {
   users: UserOption[];
   projects: ProjectOption[];
   lab: LabConfig;
-  /** Recordatorios fijados o próximos para mostrar arriba del calendario */
-  reminders: Pick<MissionItem, "id" | "title" | "dueDate" | "pinned">[];
+  /** Recordatorios de proyectos (fijados o próximos) para mostrar arriba del calendario */
+  reminders: (Pick<MissionItem, "id" | "title" | "dueDate" | "pinned"> & { projectName: string | null })[];
 };
 
 type Dialog =
@@ -128,12 +128,14 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
     });
 
     for (const m of missions) {
+      if (projectFilter !== "all" && projectFilter !== m.projectId) continue;
+      const color = m.projectColor ?? MISSION_COLOR;
       out.push({
         id: `mission:${m.missionId}:${m.start}`,
         start: m.start,
         end: m.end,
-        title: `⭐ ${m.title}`,
-        backgroundColor: MISSION_COLOR,
+        title: `🔁 ${m.projectName ? `${m.projectName}: ` : ""}${m.title}`,
+        backgroundColor: color,
         borderColor: MISSION_COLOR,
         textColor: "#fff",
         classNames: ["ev-mission"],
@@ -142,36 +144,8 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       });
     }
 
-    // Marca de fondo donde el lab ya está lleno (con todas las reservas, no sólo las filtradas).
-    const step = lab.slotMinutes * 60000;
-    const inLab = bookings.filter((b) => b.kind !== "ASYNC");
-    const points = new Set<number>();
-    for (const b of inLab) {
-      const s = Math.floor(new Date(b.start).getTime() / step) * step;
-      for (let t = s; t < new Date(b.end).getTime(); t += step) points.add(t);
-    }
-    const full = [...points]
-      .filter((t) => {
-        const people = inLab
-          .filter((b) => new Date(b.start).getTime() < t + step && new Date(b.end).getTime() > t)
-          .reduce((acc, b) => acc + b.participants.length, 0);
-        return people >= lab.capacity;
-      })
-      .sort((a, b) => a - b);
-    for (let i = 0; i < full.length; ) {
-      let j = i;
-      while (j + 1 < full.length && full[j + 1] === full[j] + step) j++;
-      out.push({
-        start: new Date(full[i]),
-        end: new Date(full[j] + step),
-        display: "background",
-        backgroundColor: "#fecaca",
-        title: "Lab lleno",
-      });
-      i = j + 1;
-    }
     return out;
-  }, [visible, bookings, missions, me.id, isAdmin, lab.capacity, lab.slotMinutes]);
+  }, [visible, missions, projectFilter, me.id, isAdmin]);
 
   const myMinutes = useMemo(
     () => bookings.filter((b) => isIn(b, me.id)).reduce((acc, b) => acc + minutesOf(b), 0),
@@ -214,7 +188,7 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
   async function onMoveOrResize(arg: EventDropArg | EventResizeDoneArg) {
     const booking = arg.event.extendedProps.booking as BookingItem;
     try {
-      await withCapacityOverride(isAdmin, `/api/bookings/${booking.id}`, "PATCH", { start: arg.event.start, end: arg.event.end });
+      await api(`/api/bookings/${booking.id}`, { method: "PATCH", body: { start: arg.event.start, end: arg.event.end } });
       await load();
     } catch (err) {
       arg.revert();
@@ -237,7 +211,7 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
           <h1 className="text-2xl font-bold">Calendario del lab</h1>
           <p className="mt-1 text-sm text-zinc-500">
             Arrastra sobre el calendario para reservar tus horas o abrir una sesión de proyecto; haz clic en una sesión para unirte.
-            Lab abierto {minutesToHHMM(lab.openMinute)}–{minutesToHHMM(lab.closeMinute)} · cupo {lab.capacity} personas a la vez.
+            Lab abierto {minutesToHHMM(lab.openMinute)}–{minutesToHHMM(lab.closeMinute)}.
           </p>
         </div>
         <div className="flex flex-wrap gap-3 text-sm">
@@ -259,12 +233,13 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       </div>
 
       {reminders.length > 0 && (
-        <Link href="/misiones" className="card block border-amber-200 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100/60">
-          <div className="mb-1 font-semibold text-amber-900">⭐ Misiones generales</div>
+        <Link href="/proyectos" className="card block border-amber-200 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100/60">
+          <div className="mb-1 font-semibold text-amber-900">📌 Recordatorios de proyectos</div>
           <ul className="space-y-0.5 text-amber-900">
             {reminders.map((r) => (
               <li key={r.id}>
                 {r.pinned ? "📌 " : "• "}
+                {r.projectName && <b>{r.projectName}: </b>}
                 {r.title}
                 {r.dueDate && (
                   <span className="text-amber-700">
@@ -290,8 +265,7 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
             style={{ background: `repeating-linear-gradient(135deg, ${ASYNC_COLOR} 0 3px, #fff 3px 5px)` }}
           />{" "}
           Asíncrono
-          <span className="ml-2 inline-block h-3 w-3 rounded-sm" style={{ background: MISSION_COLOR }} /> Misión general
-          <span className="ml-2 inline-block h-3 w-3 rounded-sm bg-red-200" /> Lab lleno
+          <span className="ml-2 inline-block h-3 w-3 rounded-sm" style={{ background: MISSION_COLOR }} /> 🔁 Sesión fija
         </span>
         <div className="flex flex-wrap gap-2 sm:ml-auto">
           <select className="input w-auto py-1.5" value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)}>
@@ -357,7 +331,7 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
             projects={isAdmin ? projects : myProjects}
             submitLabel="Reservar"
             onSubmit={async (v) => {
-              await withCapacityOverride(isAdmin, "/api/bookings", "POST", toBody(v, isAdmin));
+              await api("/api/bookings", { method: "POST", body: toBody(v, isAdmin) });
               await closeAndReload();
             }}
           />
@@ -365,13 +339,18 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       )}
 
       {dialog?.type === "mission" && (
-        <Modal title={`⭐ ${dialog.occurrence.title}`} onClose={() => setDialog(null)}>
+        <Modal
+          title={`🔁 ${dialog.occurrence.projectName ? `${dialog.occurrence.projectName}: ` : ""}${dialog.occurrence.title}`}
+          onClose={() => setDialog(null)}
+        >
           <p className="text-sm first-letter:uppercase">
             {formatRange(new Date(dialog.occurrence.start), new Date(dialog.occurrence.end))}
           </p>
-          <p className="mt-2 text-sm text-zinc-500">Sesión general recurrente definida por el admin.</p>
+          <p className="mt-2 text-sm text-zinc-500">
+            Sesión fija {dialog.occurrence.projectName ? "del proyecto" : "de todo el club"}, se repite cada semana (la define el admin).
+          </p>
           <div className="mt-5 flex justify-end">
-            <Link href="/misiones" className="btn-dark">Ver misiones generales</Link>
+            <Link href="/proyectos" className="btn-dark">Ver proyectos</Link>
           </div>
         </Modal>
       )}
@@ -382,47 +361,12 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
           users={users}
           projects={isAdmin ? projects : myProjects}
           booking={selected}
-          capacity={lab.capacity}
-          occupancy={peakPeople(bookings, selected)}
           onClose={() => setDialog(null)}
           onDone={closeAndReload}
         />
       )}
     </div>
   );
-}
-
-/** Personas simultáneas máximas en el lab durante la reserva dada. */
-function peakPeople(bookings: BookingItem[], target: BookingItem) {
-  const s = new Date(target.start).getTime();
-  const e = new Date(target.end).getTime();
-  const events = bookings
-    .filter((b) => b.kind !== "ASYNC" && new Date(b.start).getTime() < e && new Date(b.end).getTime() > s)
-    .flatMap((b) => [
-      { t: Math.max(new Date(b.start).getTime(), s), d: b.participants.length },
-      { t: Math.min(new Date(b.end).getTime(), e), d: -b.participants.length },
-    ])
-    .sort((a, b) => a.t - b.t || a.d - b.d);
-  let cur = 0;
-  let peak = 0;
-  for (const ev of events) {
-    cur += ev.d;
-    peak = Math.max(peak, cur);
-  }
-  return peak;
-}
-
-/** Al admin le pregunta si quiere rebasar el cupo y reintenta con ?force=1. */
-async function withCapacityOverride(isAdmin: boolean, path: string, method: string, body: unknown) {
-  try {
-    return await api(path, { method, body });
-  } catch (err) {
-    const msg = (err as Error).message;
-    if (isAdmin && msg.includes("lleno") && confirm(`${msg}. ¿Guardar de todos modos?`)) {
-      return api(`${path}?force=1`, { method, body });
-    }
-    throw err;
-  }
 }
 
 const toBody = (v: SlotFormValue, includeParticipants: boolean) => ({
@@ -439,8 +383,6 @@ function BookingDialog(props: {
   users: UserOption[];
   projects: ProjectOption[];
   booking: BookingItem;
-  capacity: number;
-  occupancy: number;
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
@@ -489,7 +431,7 @@ function BookingDialog(props: {
           projects={props.projects}
           submitLabel="Guardar cambios"
           onSubmit={async (v) => {
-            await withCapacityOverride(isAdmin, `/api/bookings/${booking.id}`, "PATCH", toBody(v, isAdmin));
+            await api(`/api/bookings/${booking.id}`, { method: "PATCH", body: toBody(v, isAdmin) });
             await props.onDone();
           }}
         >
@@ -523,14 +465,6 @@ function BookingDialog(props: {
             ))}
           </div>
         </dd>
-        {booking.kind !== "ASYNC" && (
-          <>
-            <dt className="text-zinc-500">Lab</dt>
-            <dd className={props.occupancy >= props.capacity ? "font-medium text-red-700" : ""}>
-              {props.occupancy} de {props.capacity} personas en el momento más lleno
-            </dd>
-          </>
-        )}
         {booking.notes && (
           <>
             <dt className="text-zinc-500">Notas</dt>
