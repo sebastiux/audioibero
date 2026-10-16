@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, formatHours, hhmmToMinutes, minutesToHHMM, WEEKDAYS } from "@/lib/client";
 import { Modal } from "./Modal";
 
@@ -116,7 +116,10 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
         </div>
       </section>
 
-      <SettingsForm settings={settings} onSaved={() => router.refresh()} />
+      <div className="space-y-6">
+        <SettingsForm settings={settings} onSaved={() => router.refresh()} />
+        <EmailCard />
+      </div>
 
       {adding && (
         <AddMemberDialog
@@ -226,7 +229,7 @@ function NumberField(props: { label: string; value: number; min: number; max: nu
   );
 }
 
-type InviteResult = { emailSent: boolean; emailConfigured: boolean; link?: string };
+type InviteResult = { emailSent: boolean; emailConfigured: boolean; link?: string; emailError?: string };
 type InviteNotice = InviteResult & { email: string; kind?: "invite" | "reset" };
 
 function AddMemberDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (n: InviteNotice) => void }) {
@@ -288,11 +291,10 @@ function InviteNoticeDialog({ notice, onClose }: { notice: InviteNotice; onClose
       ) : (
         <div className="space-y-3 text-sm">
           <p>
-            {notice.emailConfigured
-              ? "Resend rechazó el envío (revisa el remitente EMAIL_FROM y el dominio verificado)."
-              : "El correo no está configurado (falta RESEND_API_KEY)."}
+            {notice.emailConfigured ? "Resend rechazó el envío." : "El correo no está configurado (falta RESEND_API_KEY)."}
             {notice.link ? " Mientras tanto, comparte este enlace con la persona:" : ""}
           </p>
+          {notice.emailError && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">{notice.emailError}</p>}
           {notice.link && (
             <div className="flex gap-2">
               <input className="input text-xs" readOnly value={notice.link} onFocus={(e) => e.target.select()} />
@@ -313,5 +315,58 @@ function InviteNoticeDialog({ notice, onClose }: { notice: InviteNotice; onClose
         <button className="btn-primary" onClick={onClose}>Listo</button>
       </div>
     </Modal>
+  );
+}
+
+/** Estado del correo (Resend) y botón para mandarse un correo de prueba. */
+function EmailCard() {
+  const [status, setStatus] = useState<{ configured: boolean; from: string; appUrl: string } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    api<{ configured: boolean; from: string; appUrl: string }>("/api/admin/email-test").then(setStatus).catch(() => null);
+  }, []);
+
+  async function test() {
+    setSending(true);
+    setResult(null);
+    try {
+      const r = await api<{ sent: number; configured: boolean; error?: string; to: string }>("/api/admin/email-test", { method: "POST" });
+      setResult(
+        r.sent > 0
+          ? { ok: true, text: `Enviado a ${r.to}. Si no llega en un par de minutos, revisa spam y el registro de envíos en resend.com/emails.` }
+          : { ok: false, text: r.configured ? (r.error ?? "Resend rechazó el envío.") : "Falta RESEND_API_KEY en las variables de la app." },
+      );
+    } catch (err) {
+      setResult({ ok: false, text: (err as Error).message });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="card space-y-3 p-5 text-sm">
+      <div>
+        <h2 className="font-semibold">Correo (Resend)</h2>
+        <p className="text-xs text-zinc-500">Invitaciones, recuperar contraseña y recordatorios.</p>
+      </div>
+      {status && (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+          <dt className="text-zinc-500">Estado</dt>
+          <dd className={status.configured ? "text-emerald-700" : "text-red-700"}>{status.configured ? "Configurado" : "Falta RESEND_API_KEY"}</dd>
+          <dt className="text-zinc-500">Remitente</dt>
+          <dd className="break-all">{status.from}</dd>
+          <dt className="text-zinc-500">Enlaces a</dt>
+          <dd className="break-all">{status.appUrl}</dd>
+        </dl>
+      )}
+      {result && (
+        <p className={`rounded-lg px-3 py-2 text-xs ${result.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>{result.text}</p>
+      )}
+      <button className="btn-ghost w-full" onClick={test} disabled={sending}>
+        {sending ? "Enviando…" : "Enviarme un correo de prueba"}
+      </button>
+    </section>
   );
 }

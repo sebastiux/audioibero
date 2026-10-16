@@ -31,7 +31,13 @@ export const POST = route(async (req) => {
   });
   const mail = await sendInvite(user);
   return NextResponse.json(
-    { user, emailSent: mail.sent > 0, link: mail.sent > 0 ? undefined : mail.url, emailConfigured: mail.configured },
+    {
+      user,
+      emailSent: mail.sent > 0,
+      link: mail.sent > 0 ? undefined : mail.url,
+      emailConfigured: mail.configured,
+      emailError: mail.error,
+    },
     { status: 201 },
   );
 });

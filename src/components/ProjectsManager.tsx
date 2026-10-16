@@ -30,13 +30,13 @@ function EmailButton({ missionId }: { missionId: string }) {
     if (!confirm("¿Enviar este recordatorio por correo ahora?")) return;
     setState("sending");
     try {
-      const r = await api<{ sent: number; recipients: number; configured: boolean }>(`/api/missions/${missionId}/notify`, { method: "POST" });
+      const r = await api<{ sent: number; recipients: number; configured: boolean; error?: string }>(`/api/missions/${missionId}/notify`, { method: "POST" });
       if (r.sent === 0) {
         alert(
           r.recipients === 0
             ? "No hay integrantes con cuenta activa a quién enviarlo."
             : r.configured
-              ? "Resend no pudo enviar el correo. Revisa EMAIL_FROM y el dominio verificado."
+              ? `Resend no pudo enviar el correo.\n\n${r.error ?? ""}`
               : "El correo no está configurado (falta RESEND_API_KEY).",
         );
         setState("idle");

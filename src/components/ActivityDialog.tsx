@@ -71,14 +71,14 @@ export function ActivityDialog({
       notify: type === "REMINDER" && notify,
     };
     try {
-      const res = await api<{ email?: { sent: number; failed: number; configured: boolean; recipients: number } }>(
+      const res = await api<{ email?: { sent: number; failed: number; configured: boolean; recipients: number; error?: string } }>(
         mission ? `/api/missions/${mission.id}` : "/api/missions",
         { method: mission ? "PUT" : "POST", body },
       );
       if (res.email && res.email.sent === 0 && res.email.recipients > 0) {
         alert(
           res.email.configured
-            ? "Se guardó, pero Resend no pudo enviar el correo. Revisa EMAIL_FROM y el dominio verificado."
+            ? `Se guardó, pero Resend no pudo enviar el correo.\n\n${res.email.error ?? ""}`
             : "Se guardó, pero el correo no está configurado (falta RESEND_API_KEY).",
         );
       }

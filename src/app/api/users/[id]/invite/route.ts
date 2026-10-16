@@ -11,9 +11,15 @@ export const POST = route<IdParams>(async (_req, { params }) => {
   if (!user) throw notFound("El usuario no existe");
   if (user.passwordHash) {
     const mail = await sendPasswordReset(user);
-    return NextResponse.json({ kind: "reset", emailSent: mail.sent > 0, emailConfigured: mail.configured });
+    return NextResponse.json({ kind: "reset", emailSent: mail.sent > 0, emailConfigured: mail.configured, emailError: mail.error });
   }
   await prisma.user.update({ where: { id }, data: { invitedAt: new Date() } });
   const mail = await sendInvite(user);
-  return NextResponse.json({ kind: "invite", emailSent: mail.sent > 0, link: mail.sent > 0 ? undefined : mail.url, emailConfigured: mail.configured });
+  return NextResponse.json({
+    kind: "invite",
+    emailSent: mail.sent > 0,
+    link: mail.sent > 0 ? undefined : mail.url,
+    emailConfigured: mail.configured,
+    emailError: mail.error,
+  });
 });
