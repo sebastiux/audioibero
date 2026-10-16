@@ -149,14 +149,11 @@ model Mission {
 
 /// Configuración única del laboratorio (fila con id = 1).
 model LabSettings {
-  id                    Int      @id @default(1)
-  openMinute            Int      @default(480)
-  closeMinute           Int      @default(1260)
+  id          Int      @id @default(1)
+  openMinute  Int      @default(480)
+  closeMinute Int      @default(1260)
   /// Días abiertos, 0 = domingo ... 6 = sábado.
-  openDays              Int[]    @default([1, 2, 3, 4, 5])
-  slotMinutes           Int      @default(30)
-  /// Calendario recomendado: horas de sesión de equipo por proyecto a la semana y duración de cada sesión
-  projectWeeklyMinutes  Int      @default(240)
-  projectSessionMinutes Int      @default(120)
-  updatedAt             DateTime @updatedAt
+  openDays    Int[]    @default([1, 2, 3, 4, 5])
+  slotMinutes Int      @default(30)
+  updatedAt   DateTime @updatedAt
 }

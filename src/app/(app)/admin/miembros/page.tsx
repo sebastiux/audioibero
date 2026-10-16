@@ -39,8 +39,6 @@ export default async function MembersPage() {
         closeMinute: settings.closeMinute,
         openDays: settings.openDays,
         slotMinutes: settings.slotMinutes,
-        projectWeeklyMinutes: settings.projectWeeklyMinutes,
-        projectSessionMinutes: settings.projectSessionMinutes,
       }}
     />
   );

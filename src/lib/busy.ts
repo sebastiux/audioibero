@@ -1,5 +1,4 @@
 import "server-only";
-import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { busyBlocksFromIcs } from "./ibero";
 import type { IberoClass } from "./ibero-pdf";
@@ -70,13 +69,4 @@ export function iberoClasses(user: IberoSource, from: Date, to: Date, timeZone: 
   } catch {
     return [];
   }
-}
-
-/** Clases Ibero de todos los miembros activos que subieron su horario. */
-export async function allIberoClasses(from: Date, to: Date, timeZone: string) {
-  const users = await prisma.user.findMany({
-    where: { active: true, OR: [{ iberoIcs: { not: null } }, { iberoClasses: { not: Prisma.DbNull } }] },
-    select: { id: true, iberoIcs: true, iberoClasses: true },
-  });
-  return users.flatMap((u) => iberoClasses(u, from, to, timeZone).map((c) => ({ ...c, userId: u.id })));
 }

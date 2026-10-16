@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseBody, requireUser, route } from "@/lib/api";
 import { iberoClasses, missionOccurrences } from "@/lib/busy";
-import { rangeBounds } from "@/lib/recommend";
+import { rangeBounds } from "@/lib/range";
 import { getSettings } from "@/lib/rules";
 import { proposePersonal } from "@/lib/scheduler";
 import { planProposeSchema } from "@/lib/validation";

@@ -20,8 +20,6 @@ type Settings = {
   closeMinute: number;
   openDays: number[];
   slotMinutes: number;
-  projectWeeklyMinutes: number;
-  projectSessionMinutes: number;
 };
 
 export function MembersAdmin({ meId, users, settings }: { meId: string; users: UserRow[]; settings: Settings }) {
@@ -133,7 +131,7 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
     <form onSubmit={submit} className="card h-fit space-y-4 p-5">
       <div>
         <h2 className="font-semibold">Reglas del laboratorio</h2>
-        <p className="text-xs text-zinc-500">Se usan en el calendario y al generar el calendario recomendado.</p>
+        <p className="text-xs text-zinc-500">Se usan en el calendario y al proponer horarios en Mi plan.</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -171,30 +169,6 @@ function SettingsForm({ settings, onSaved }: { settings: Settings; onSaved: () =
             <option value={30}>30 min</option>
             <option value={60}>60 min</option>
           </select>
-        </div>
-      </div>
-      <div className="border-t border-zinc-100 pt-4">
-        <h3 className="text-sm font-semibold">Calendario recomendado</h3>
-        <p className="mb-3 text-xs text-zinc-500">Cuánto tiempo de sesión de equipo se agenda para cada proyecto.</p>
-        <div className="grid grid-cols-2 gap-3">
-          <NumberField
-            label="Por proyecto"
-            value={s.projectWeeklyMinutes / 60}
-            min={0}
-            max={168}
-            step={0.5}
-            onChange={(v) => set("projectWeeklyMinutes", Math.round(v * 60))}
-            suffix="h / semana"
-          />
-          <NumberField
-            label="Cada sesión"
-            value={s.projectSessionMinutes / 60}
-            min={0.5}
-            max={12}
-            step={0.5}
-            onChange={(v) => set("projectSessionMinutes", Math.round(v * 60))}
-            suffix="h"
-          />
         </div>
       </div>
       {msg && <p className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>{msg.text}</p>}

@@ -1,6 +1,6 @@
 # Club de Audio Ibero · Organizador del lab
 
-Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero. No es un sistema de reservas: todos pueden ir cuando quieran. El centro es un **calendario compartido** donde cada quien registra a qué hora va a estar, para tener un orden y **ver quién del equipo coincide**. En una sesión de proyecto, los demás integrantes se suman al mismo horario con un clic. Los admins asignan horarios, dan de alta proyectos y generan un **calendario recomendado**.
+Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero. No es un sistema de reservas: todos pueden ir cuando quieran. El centro es un **calendario compartido** donde cada quien registra a qué hora va a estar, para tener un orden y **ver quién del equipo coincide**. En una sesión de proyecto, los demás integrantes se suman al mismo horario con un clic. Cada quien arma su horario con **Mi plan** a partir de su horario de clases; los admins dan de alta proyectos con sus sesiones fijas y recordatorios.
 
 **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Prisma + PostgreSQL · Tailwind CSS 4 · FullCalendar · sesiones JWT (jose) en cookie httpOnly · Zod · Vitest.
 
@@ -19,7 +19,6 @@ Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero
 | Eliminar horarios completos | — | ✅ |
 | Asignar horarios a miembros y cambiar participantes | — | ✅ |
 | Dar de alta, editar y archivar proyectos y sus integrantes | — | ✅ |
-| Generar y aplicar el calendario recomendado | — | ✅ |
 | Gestionar miembros (alta, perfil, desactivar), ver horas por semana y horario del lab | — | ✅ |
 
 Tipos de horario: **Lab** (trabajo en el laboratorio), **Sesión de proyecto** (en el lab, el equipo se une) y **Asíncrono** (trabajo fuera del lab, con o sin proyecto).
@@ -30,17 +29,13 @@ Reglas: el lab no tiene cupo ni hay tope de horas por persona; nadie puede regis
 
 ## Mi plan (calendario Ibero)
 
-En `/mi-plan` cada miembro sube el PDF de **Materias inscritas** (Servicios en Línea → Servicios escolares → Materias inscritas → Guardar como PDF); también acepta un calendario .ics. Del PDF sólo se guardan materia, salón, día, horario y vigencia; nombre, cuenta y adeudos se descartan y el archivo no se almacena. Elige cuántas horas a la semana quiere, el periodo (sin límite: una semana, un mes o todo el semestre), la duración de los bloques y el tipo (lab, proyecto o asíncrono), y la app propone bloques que no chocan con sus clases, sus reservas ni las sesiones fijas de sus proyectos: uno por día, de preferencia **cuando también va a estar gente de sus proyectos** (se marca en morado en la vista previa), en días que ya va a la Ibero y pegados a sus clases. Los bloques se pueden arrastrar, estirar, quitar o agregar antes de guardarlos. El horario Ibero guardado también lo usa el calendario recomendado del admin.
+En `/mi-plan` cada miembro sube el PDF de **Materias inscritas** (Servicios en Línea → Servicios escolares → Materias inscritas → Guardar como PDF); también acepta un calendario .ics. Del PDF sólo se guardan materia, salón, día, horario y vigencia; nombre, cuenta y adeudos se descartan y el archivo no se almacena. Elige cuántas horas a la semana quiere, el periodo (sin límite: una semana, un mes o todo el semestre), la duración de los bloques y el tipo (lab, proyecto o asíncrono), y la app propone bloques que no chocan con sus clases, sus reservas ni las sesiones fijas de sus proyectos: uno por día, de preferencia **cuando también va a estar gente de sus proyectos** (se marca en morado en la vista previa), en días que ya va a la Ibero y pegados a sus clases. Los bloques se pueden arrastrar, estirar, quitar o agregar antes de guardarlos.
 
 ## Proyectos: sesiones fijas y recordatorios
 
-En `/proyectos`, además de los integrantes, el admin define para cada proyecto **sesiones fijas** (días de la semana, horario y vigencia; en el lab o remotas) y **recordatorios** (con fecha opcional; los fijados aparecen arriba del calendario de los integrantes). También hay una tarjeta "Todo el club" para lo que aplica a todos. Las sesiones fijas aparecen en el calendario con el color del proyecto, en el .ics exportado, se respetan al proponer horarios y cuentan para la meta semanal del calendario recomendado.
+En `/proyectos`, además de los integrantes, el admin define para cada proyecto **sesiones fijas** (días de la semana, horario y vigencia; en el lab o remotas) y **recordatorios** (con fecha opcional; los fijados aparecen arriba del calendario de los integrantes). También hay una tarjeta "Todo el club" para lo que aplica a todos. Las sesiones fijas aparecen en el calendario con el color del proyecto, en el .ics exportado y se respetan al proponer horarios en Mi plan.
 
-## Calendario recomendado
-
-En `/admin/recomendado` el admin elige un periodo y la app propone **sesiones de equipo** para cada proyecto activo (por defecto 4 h a la semana en bloques de 2 h). El periodo puede ser tan largo como se quiera (p. ej. todo el semestre). Busca horarios en los que los integrantes no tengan otras reservas (si no caben todos, al menos la mitad del equipo), repartidos en días distintos y en las horas menos concurridas, dentro del horario y días de apertura. Las sesiones fijas y las sesiones de proyecto que ya existan cuentan para la meta. Las sesiones propuestas se pueden arrastrar y estirar para ajustar sus horas, o quitar, antes de aplicarlas; también evita las clases Ibero de los integrantes; al aplicar puede reemplazar las recomendadas anteriores del periodo (las manuales nunca se tocan). Las reglas se ajustan en `/admin/miembros`.
-
-El algoritmo vive en `src/lib/scheduler.ts` (función pura con pruebas en `scheduler.test.ts`).
+El algoritmo de Mi plan vive en `src/lib/scheduler.ts` (función pura con pruebas en `scheduler.test.ts`).
 
 ## Desarrollo local
 
@@ -72,7 +67,7 @@ El seed es idempotente: si el admin ya existe no cambia su contraseña. Para res
 
 ```
 prisma/schema.prisma        Modelos: User, Project, ProjectMember, Booking, BookingParticipant, Mission, LabSettings
-src/lib/scheduler.ts        Algoritmos: calendario recomendado y plan personal
+src/lib/scheduler.ts        Algoritmo de Mi plan (propuesta personal de horarios)
 src/lib/ibero-pdf.ts        Lectura del PDF "Materias inscritas" de la Ibero
 src/lib/ibero.ts            Lectura de calendarios .ics (clases recurrentes)
 src/lib/missions.ts         Expansión de sesiones fijas (recurrentes) de proyectos

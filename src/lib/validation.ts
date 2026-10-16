@@ -62,27 +62,8 @@ export const settingsSchema = z
     closeMinute: z.number().int().min(0).max(1440),
     openDays: z.array(z.number().int().min(0).max(6)).min(1, "Elige al menos un día"),
     slotMinutes: z.union([z.literal(15), z.literal(30), z.literal(60)]),
-    projectWeeklyMinutes: z.number().int().min(0).max(10080),
-    projectSessionMinutes: z.number().int().min(30).max(720),
   })
   .refine((s) => s.closeMinute > s.openMinute, { message: "El cierre debe ser después de la apertura", path: ["closeMinute"] });
-
-export const applySchema = z.object({
-  from: dateKey,
-  to: dateKey,
-  replaceRecommended: z.boolean().default(true),
-  proposals: z
-    .array(
-      z.object({
-        projectId: z.string().min(1),
-        start: dateTime,
-        end: dateTime,
-        participantIds: z.array(z.string().min(1)).min(1).max(100),
-        reason: z.string().max(200).optional(),
-      }),
-    )
-    .max(5000),
-});
 
 export const userCreateSchema = z.object({
   name: z.string().trim().min(2, "Escribe el nombre").max(80),

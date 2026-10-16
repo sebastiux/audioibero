@@ -18,7 +18,6 @@ export function Nav({ user }: Props) {
     { href: "/proyectos", label: "Proyectos" },
     ...(user.role === "ADMIN"
       ? [
-          { href: "/admin/recomendado", label: "Recomendado" },
           { href: "/admin/miembros", label: "Miembros y lab" },
         ]
       : []),

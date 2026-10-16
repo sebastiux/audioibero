@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { recommendSchedule, type SchedulerSettings } from "./scheduler";
 import { fromLocal, toLocalParts } from "./time";
 
 const TZ = "America/Mexico_City";
-const settings: SchedulerSettings = {
-  openMinute: 9 * 60,
-  closeMinute: 21 * 60,
-  openDays: [1, 2, 3, 4, 5],
-  slotMinutes: 30,
-  projectWeeklyMinutes: 240,
-  projectSessionMinutes: 120,
-};
 // 2026-10-19 es lunes
 const at = (day: string, hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -20,73 +11,6 @@ const local = (d: Date) => {
   const p = toLocalParts(d, TZ);
   return `${p.dateKey} ${String(Math.floor(p.minutes / 60)).padStart(2, "0")}:${String(p.minutes % 60).padStart(2, "0")}`;
 };
-const week = { fromKey: "2026-10-19", toKey: "2026-10-25", timeZone: TZ };
-
-describe("recommendSchedule", () => {
-  it("cubre las horas semanales del proyecto en días distintos y dentro del horario", () => {
-    const res = recommendSchedule({ ...week, settings, projects: [{ id: "p", name: "Disco", memberIds: ["a", "b", "c"] }] });
-    expect(res.proposals).toHaveLength(2);
-    const days = res.proposals.map((p) => local(p.start).slice(0, 10));
-    expect(new Set(days).size).toBe(2);
-    for (const p of res.proposals) {
-      expect(p.participantIds).toEqual(["a", "b", "c"]);
-      expect(local(p.start) >= `${local(p.start).slice(0, 10)} 09:00`).toBe(true);
-      expect(local(p.end) <= `${local(p.end).slice(0, 10)} 21:00`).toBe(true);
-      expect(p.end.getTime() - p.start.getTime()).toBe(120 * 60000);
-    }
-    expect(res.shortfall).toEqual([]);
-  });
-
-  it("evita las reservas existentes de los integrantes", () => {
-    const res = recommendSchedule({
-      ...week,
-      toKey: "2026-10-19",
-      settings: { ...settings, projectWeeklyMinutes: 120 },
-      projects: [{ id: "p", name: "Disco", memberIds: ["a", "b"] }],
-      existing: [{ participantIds: ["a"], start: at("2026-10-19", "09:00"), end: at("2026-10-19", "12:00") }],
-    });
-    expect(res.proposals).toHaveLength(1);
-    expect(local(res.proposals[0].start)).toBe("2026-10-19 12:00");
-  });
-
-  it("el lab no tiene cupo: prefiere horas menos concurridas pero no se bloquea", () => {
-    const crowd = (from: string, to: string) => ({
-      participantIds: ["x", "y", "z", "w", "v"],
-      start: at("2026-10-19", from),
-      end: at("2026-10-19", to),
-    });
-    const oneDay = { ...week, toKey: "2026-10-19", projects: [{ id: "p", name: "Disco", memberIds: ["a", "b"] }] };
-    // Mucha gente de 9 a 11: la sesión se va a la siguiente hora libre.
-    const res = recommendSchedule({ ...oneDay, settings: { ...settings, projectWeeklyMinutes: 120 }, existing: [crowd("09:00", "11:00")] });
-    expect(local(res.proposals[0].start)).toBe("2026-10-19 11:00");
-    // Aunque el lab esté concurrido todo el día, igual se agenda.
-    const full = recommendSchedule({ ...oneDay, settings: { ...settings, projectWeeklyMinutes: 120 }, existing: [crowd("09:00", "21:00")] });
-    expect(full.proposals).toHaveLength(1);
-    expect(full.shortfall).toEqual([]);
-  });
-
-  it("cuenta las sesiones del proyecto que ya existen", () => {
-    const res = recommendSchedule({
-      ...week,
-      settings,
-      projects: [{ id: "p", name: "Disco", memberIds: ["a", "b"] }],
-      existing: [{ participantIds: ["a", "b"], projectId: "p", start: at("2026-10-20", "10:00"), end: at("2026-10-20", "12:00") }],
-    });
-    expect(res.proposals).toHaveLength(1);
-    expect(local(res.proposals[0].start).slice(0, 10)).not.toBe("2026-10-20");
-  });
-
-  it("no hay tope semanal: un miembro con muchas horas igual recibe sus sesiones", () => {
-    const busyWeek = ["2026-10-19", "2026-10-20", "2026-10-21"].map((d) => ({
-      participantIds: ["a"],
-      start: at(d, "09:00"),
-      end: at(d, "13:00"),
-    }));
-    const res = recommendSchedule({ ...week, settings, projects: [{ id: "p", name: "Disco", memberIds: ["a"] }], existing: busyWeek });
-    expect(res.minutesByUser).toEqual({ a: 240 });
-    expect(res.shortfall).toEqual([]);
-  });
-});
 
 import { proposePersonal } from "./scheduler";
 import { expandMission } from "./missions";
