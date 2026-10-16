@@ -15,9 +15,9 @@ export const POST = route<IdParams>(async (_req, { params }) => {
       project: { select: { active: true, members: { where: { userId: me.id }, select: { userId: true } } } },
     },
   });
-  if (!booking) throw notFound("La reserva ya no existe");
-  if (booking.participants.some((p) => p.userId === me.id)) throw conflict("Ya estás en esta reserva");
-  if (booking.end <= new Date()) throw conflict("Esa reserva ya terminó");
+  if (!booking) throw notFound("El horario ya no existe");
+  if (booking.participants.some((p) => p.userId === me.id)) throw conflict("Ya estás en este horario");
+  if (booking.end <= new Date()) throw conflict("Ese horario ya terminó");
   if (booking.project) {
     if (!booking.project.active) throw conflict("El proyecto está archivado");
     if (booking.project.members.length === 0 && me.role !== "ADMIN") {

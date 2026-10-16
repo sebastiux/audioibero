@@ -99,7 +99,6 @@ describe("proposePersonal", () => {
     settings: { openMinute: 9 * 60, closeMinute: 21 * 60, openDays: [1, 2, 3, 4, 5], slotMinutes: 30 },
     blockMinutes: 120,
     usesLab: true,
-    labBookings: [],
   };
 
   it("reparte las horas pedidas en días distintos, pegadas a las clases y sin cruzarse con ellas", () => {
@@ -119,12 +118,12 @@ describe("proposePersonal", () => {
     expect(res.missing).toEqual({});
   });
 
-  it("no hay cupo: un lab lleno no impide proponer, sólo se prefiere otra hora", () => {
-    const busyMorning = { start: at("2026-10-19", "09:00"), end: at("2026-10-19", "13:00"), people: 20 };
-    const allDay = { start: at("2026-10-19", "09:00"), end: at("2026-10-19", "21:00"), people: 20 };
+  it("prefiere las horas en las que va a estar tu equipo", () => {
     const oneDay = { ...base, toKey: "2026-10-19", weeklyMinutes: 120, busy: [] };
-    expect(local(proposePersonal({ ...oneDay, labBookings: [busyMorning] }).blocks[0].start)).toBe("2026-10-19 13:00");
-    expect(proposePersonal({ ...oneDay, labBookings: [allDay] }).blocks).toHaveLength(1);
+    const team = [{ start: at("2026-10-19", "15:00"), end: at("2026-10-19", "17:00") }];
+    expect(local(proposePersonal({ ...oneDay, teamPresence: team }).blocks[0].start)).toBe("2026-10-19 15:00");
+    // Para trabajo asíncrono no importa dónde esté el equipo.
+    expect(local(proposePersonal({ ...oneDay, usesLab: false, teamPresence: team }).blocks[0].start)).toBe("2026-10-19 09:00");
   });
 
   it("puede planear todo un semestre: cada semana recibe sus horas", () => {

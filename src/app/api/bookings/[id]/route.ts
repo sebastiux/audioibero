@@ -15,14 +15,14 @@ export const PATCH = route<IdParams>(async (req, { params }) => {
     where: { id },
     include: { participants: { select: { userId: true } } },
   });
-  if (!current) throw notFound("La reserva ya no existe");
-  if (current.createdById !== me.id && !isAdmin) throw forbidden("Sólo quien creó la reserva o un admin puede modificarla");
+  if (!current) throw notFound("El horario ya no existe");
+  if (current.createdById !== me.id && !isAdmin) throw forbidden("Sólo quien registró el horario o un admin puede modificarlo");
 
   const data = await parseBody(req, bookingUpdateSchema);
   if (data.participantIds && !isAdmin) throw forbidden("Sólo un admin puede cambiar a los participantes");
 
   const participantIds = data.participantIds ? [...new Set(data.participantIds)] : current.participants.map((p) => p.userId);
-  if (participantIds.length === 0) throw badRequest("La reserva necesita al menos a un miembro");
+  if (participantIds.length === 0) throw badRequest("El horario necesita al menos a un miembro");
   const next = {
     start: data.start ?? current.start,
     end: data.end ?? current.end,
@@ -54,6 +54,6 @@ export const DELETE = route<IdParams>(async (_req, { params }) => {
   await requireAdmin();
   const { id } = await params;
   const { count } = await prisma.booking.deleteMany({ where: { id } });
-  if (count === 0) throw notFound("La reserva ya no existe");
+  if (count === 0) throw notFound("El horario ya no existe");
   return NextResponse.json({ ok: true });
 });

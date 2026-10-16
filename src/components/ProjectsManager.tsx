@@ -284,7 +284,7 @@ function ProjectDialog({
   }
 
   async function remove() {
-    if (!project || !confirm(`¿Eliminar "${project.name}"? Sus reservas quedarán como trabajo de lab.`)) return;
+    if (!project || !confirm(`¿Eliminar "${project.name}"? Sus horarios quedarán como trabajo de lab.`)) return;
     try {
       await api(`/api/projects/${project.id}`, { method: "DELETE" });
       onSaved();

@@ -45,7 +45,7 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">Miembros</h1>
-            <p className="mt-1 text-sm text-zinc-500">{users.filter((u) => u.active).length} activos · horas reservadas esta semana</p>
+            <p className="mt-1 text-sm text-zinc-500">{users.filter((u) => u.active).length} activos · horas registradas esta semana</p>
           </div>
           <div className="flex gap-2">
             <input className="input w-48" placeholder="Buscar…" value={query} onChange={(e) => setQuery(e.target.value)} />

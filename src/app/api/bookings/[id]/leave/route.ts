@@ -13,6 +13,6 @@ export const POST = route<IdParams>(async (_req, { params }) => {
     if (remaining === 0) await tx.booking.delete({ where: { id } });
     return true;
   });
-  if (!removed) throw notFound("No estabas en esta reserva");
+  if (!removed) throw notFound("No estabas en este horario");
   return NextResponse.json({ ok: true });
 });

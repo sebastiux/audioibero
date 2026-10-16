@@ -16,16 +16,28 @@ export const POST = route(async (req) => {
   const data = await parseBody(req, planProposeSchema);
   const { start, end, tz } = rangeBounds(data.from, data.to);
 
-  const [settings, user, mine, all, missions] = await Promise.all([
+  const [settings, user, mine, team, missions] = await Promise.all([
     getSettings(),
     prisma.user.findUniqueOrThrow({ where: { id: me.id }, select: { iberoIcs: true, iberoClasses: true } }),
     prisma.booking.findMany({
       where: { start: { lt: end }, end: { gt: start }, participants: { some: { userId: me.id } } },
       select: { start: true, end: true, kind: true, project: { select: { name: true } } },
     }),
+    // Horarios en el lab de gente que comparte proyecto conmigo.
     prisma.booking.findMany({
-      where: { start: { lt: end }, end: { gt: start }, kind: { not: "ASYNC" } },
-      select: { start: true, end: true, _count: { select: { participants: true } } },
+      where: {
+        start: { lt: end },
+        end: { gt: start },
+        kind: { not: "ASYNC" },
+        participants: {
+          some: { userId: { not: me.id }, user: { projectMemberships: { some: { project: { active: true, members: { some: { userId: me.id } } } } } } },
+        },
+      },
+      select: {
+        start: true,
+        end: true,
+        participants: { select: { userId: true, user: { select: { name: true } } } },
+      },
     }),
     missionOccurrences(start, end, tz, me.id),
   ]);
@@ -46,12 +58,17 @@ export const POST = route(async (req) => {
       ...mine.map((b) => ({ start: b.start, end: b.end })),
       ...missions.map((m) => ({ start: m.start, end: m.end })),
     ],
-    labBookings: all.map((b) => ({ start: b.start, end: b.end, people: b._count.participants })),
+    teamPresence: team.map((b) => ({ start: b.start, end: b.end })),
   });
 
   return NextResponse.json({
     hasIbero: Boolean(user.iberoIcs || user.iberoClasses),
     blocks: result.blocks,
+    team: team.map((b) => ({
+      start: b.start,
+      end: b.end,
+      names: b.participants.filter((p) => p.userId !== me.id).map((p) => p.user.name.split(" ")[0]),
+    })),
     missingMinutes: Object.values(result.missing).reduce((a, b) => a + b, 0),
     busy: [
       ...classes.map((c) => ({ start: c.start, end: c.end, title: c.title, type: "class" as const })),

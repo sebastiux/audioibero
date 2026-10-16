@@ -55,5 +55,5 @@ export async function assertParticipantsFree(userIds: string[], start: Date, end
     },
     select: { user: { select: { name: true } } },
   });
-  if (clash) throw conflict(`${clash.user.name} ya tiene otra reserva que se cruza con ese horario`);
+  if (clash) throw conflict(`${clash.user.name} ya tiene otro horario registrado que se cruza con ese`);
 }

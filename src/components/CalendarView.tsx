@@ -13,6 +13,7 @@ import Link from "next/link";
 import type { BookingItem, LabConfig, Me, MissionItem, MissionOccurrenceItem, ProjectOption, UserOption } from "@/lib/types";
 import { Modal } from "./Modal";
 import { SlotForm, type SlotFormValue } from "./SlotForm";
+import { findCoincidences, presentAt } from "@/lib/coincidences";
 
 type Props = {
   me: Me;
@@ -51,6 +52,11 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
   const [projectFilter, setProjectFilter] = useState("all");
 
   const myProjects = useMemo(() => projects.filter((p) => p.memberIds.includes(me.id)), [projects, me.id]);
+  /** Personas con las que comparto al menos un proyecto. */
+  const teammates = useMemo(
+    () => new Set(myProjects.flatMap((p) => p.memberIds).filter((id) => id !== me.id)),
+    [myProjects, me.id],
+  );
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -94,11 +100,12 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       bookings.filter(
         (b) =>
           (!onlyMine || isIn(b, me.id)) &&
-          (memberFilter === "all" || isIn(b, memberFilter)) &&
+          (memberFilter === "all" ||
+            (memberFilter === "team" ? b.participants.some((x) => x.userId === me.id || teammates.has(x.userId)) : isIn(b, memberFilter))) &&
           (projectFilter === "all" ||
             (projectFilter === "lab" ? b.kind === "LAB" : projectFilter === "async" ? b.kind === "ASYNC" : b.projectId === projectFilter)),
       ),
-    [bookings, onlyMine, memberFilter, projectFilter, me.id],
+    [bookings, onlyMine, memberFilter, projectFilter, me.id, teammates],
   );
 
   const events = useMemo<EventInput[]>(() => {
@@ -210,12 +217,12 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
         <div>
           <h1 className="text-2xl font-bold">Calendario del lab</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Arrastra sobre el calendario para reservar tus horas o abrir una sesión de proyecto; haz clic en una sesión para unirte.
+            Registra a qué hora vas a estar arrastrando sobre el calendario y ve quién coincide contigo; haz clic en un horario para sumarte.
             Lab abierto {minutesToHHMM(lab.openMinute)}–{minutesToHHMM(lab.closeMinute)}.
           </p>
         </div>
         <div className="flex flex-wrap gap-3 text-sm">
-          <button className="btn-primary" onClick={openQuickCreate}>+ Reservar horario</button>
+          <button className="btn-primary" onClick={openQuickCreate}>+ Registrar mi horario</button>
           <a className="btn-ghost" href="/api/me/export" download>
             ⤓ Exportar a mi calendario
           </a>
@@ -255,7 +262,7 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       <div className="card flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3 text-sm">
         <label className="inline-flex cursor-pointer select-none items-center gap-2">
           <input type="checkbox" className="accent-brand" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />
-          Sólo mis reservas
+          Sólo mis horarios
         </label>
         <span className="inline-flex items-center gap-2 text-zinc-500">
           <span className="inline-block h-3 w-3 rounded-sm" style={{ background: LAB_COLOR }} /> Contigo
@@ -270,6 +277,7 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
         <div className="flex flex-wrap gap-2 sm:ml-auto">
           <select className="input w-auto py-1.5" value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)}>
             <option value="all">Todos los miembros</option>
+            {teammates.size > 0 && <option value="team">Mi equipo</option>}
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.id === me.id ? `${u.name} (tú)` : u.name}</option>
             ))}
@@ -286,6 +294,8 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
+      <WhoIsThere me={me} bookings={bookings} teammates={teammates} onOpen={(id) => setDialog({ type: "booking", id })} />
 
       <div className={`card p-3 transition-opacity ${loading ? "opacity-70" : ""}`}>
         <FullCalendar
@@ -324,12 +334,12 @@ export function CalendarView({ me, users, projects, lab, reminders }: Props) {
       </div>
 
       {dialog?.type === "create" && (
-        <Modal title="Nueva reserva" onClose={() => setDialog(null)}>
+        <Modal title="¿Cuándo vas a estar?" onClose={() => setDialog(null)}>
           <SlotForm
             initial={{ participantIds: [me.id], start: dialog.start, end: dialog.end, kind: "LAB", projectId: null, notes: "" }}
             users={isAdmin ? users : undefined}
             projects={isAdmin ? projects : myProjects}
-            submitLabel="Reservar"
+            submitLabel="Guardar"
             onSubmit={async (v) => {
               await api("/api/bookings", { method: "POST", body: toBody(v, isAdmin) });
               await closeAndReload();
@@ -413,7 +423,7 @@ function BookingDialog(props: {
       ? `Trabajo asíncrono${booking.project ? ` · ${booking.project.name}` : ""}`
       : booking.kind === "PROJECT" && booking.project
         ? `Sesión de ${booking.project.name}`
-        : "Reserva de lab";
+        : "En el lab";
 
   if (editing) {
     return (
@@ -489,7 +499,7 @@ function BookingDialog(props: {
           <button
             className="btn-danger mr-auto"
             disabled={busy}
-            onClick={() => confirm("¿Eliminar esta reserva para todos?") && run(() => api(`/api/bookings/${booking.id}`, { method: "DELETE" }))}
+            onClick={() => confirm("¿Eliminar este horario para todos?") && run(() => api(`/api/bookings/${booking.id}`, { method: "DELETE" }))}
           >
             Eliminar
           </button>
@@ -500,19 +510,99 @@ function BookingDialog(props: {
             className="btn-ghost"
             disabled={busy}
             onClick={() =>
-              (booking.participants.length > 1 || confirm("Eres la única persona: la reserva se eliminará. ¿Continuar?")) &&
+              (booking.participants.length > 1 || confirm("Eres la única persona: el horario se eliminará. ¿Continuar?")) &&
               run(() => api(`/api/bookings/${booking.id}/leave`, { method: "POST" }))
             }
           >
-            Salirme
+            Ya no voy
           </button>
         )}
         {!mine && !ended && (isTeamMember || isAdmin) && (
           <button className="btn-primary" disabled={busy} onClick={() => run(() => api(`/api/bookings/${booking.id}/join`, { method: "POST" }))}>
-            Unirme a este horario
+            Yo también voy
           </button>
         )}
       </div>
     </Modal>
+  );
+}
+
+/** Quién está ahora en el lab y quién coincide conmigo en mis próximos horarios (de la vista actual). */
+function WhoIsThere(props: { me: Me; bookings: BookingItem[]; teammates: Set<string>; onOpen: (id: string) => void }) {
+  const { me, bookings, teammates } = props;
+  const [expanded, setExpanded] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const present = useMemo(() => presentAt(now, bookings), [now, bookings]);
+  const coincidences = useMemo(
+    () => findCoincidences(me.id, bookings, teammates).filter((c) => c.end > now),
+    [me.id, bookings, teammates, now],
+  );
+  const myUpcoming = bookings.some((b) => b.kind !== "ASYNC" && isIn(b, me.id) && new Date(b.end) > now);
+  const shown = expanded ? coincidences : coincidences.slice(0, 4);
+  const hhmm = (d: Date) => d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
+
+  return (
+    <section className="card grid gap-4 p-4 text-sm md:grid-cols-[220px_1fr]">
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">🟢 Ahora en el lab</h2>
+        {present.length === 0 ? (
+          <p className="mt-1 text-zinc-500">Nadie registrado en este momento.</p>
+        ) : (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {present.map((p) => (
+              <span
+                key={p.userId}
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  p.userId === me.id ? "bg-brand text-white" : teammates.has(p.userId) ? "bg-violet-100 text-violet-800" : "bg-zinc-100"
+                }`}
+              >
+                {p.userId === me.id ? "Tú" : p.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">👥 Quién coincide contigo</h2>
+        {coincidences.length === 0 ? (
+          <p className="mt-1 text-zinc-500">
+            {myUpcoming
+              ? "Por ahora nadie más registró horario cuando tú vas a estar."
+              : "Registra a qué hora vas a estar para ver quién coincide contigo."}
+          </p>
+        ) : (
+          <ul className="mt-1.5 space-y-1.5">
+            {shown.map((c) => (
+              <li key={c.scheduleId} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <button className="font-medium hover:underline first-letter:uppercase" onClick={() => props.onOpen(c.scheduleId)}>
+                  {c.start.toLocaleDateString("es-MX", { weekday: "short", day: "numeric" })} {hhmm(c.start)}–{hhmm(c.end)}
+                </button>
+                {c.people.map((p) => (
+                  <span
+                    key={p.userId}
+                    title={`${hhmm(p.start)}–${hhmm(p.end)}`}
+                    className={`rounded-full px-2 py-0.5 text-xs ${p.teammate ? "bg-violet-100 text-violet-800" : "bg-zinc-100 text-zinc-700"}`}
+                  >
+                    {p.name.split(" ")[0]}
+                    <span className="opacity-60"> {hhmm(p.start)}–{hhmm(p.end)}</span>
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
+        {coincidences.length > 4 && (
+          <button className="mt-1 text-xs font-medium text-brand hover:underline" onClick={() => setExpanded((e) => !e)}>
+            {expanded ? "Ver menos" : `Ver ${coincidences.length - 4} más`}
+          </button>
+        )}
+        {teammates.size > 0 && <p className="mt-2 text-xs text-zinc-400">En morado: gente de tus proyectos.</p>}
+      </div>
+    </section>
   );
 }

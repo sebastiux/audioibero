@@ -218,8 +218,10 @@ export type PersonalInput = {
   usesLab: boolean;
   /** Lo que ocupa al miembro: clases Ibero, sus reservas y las sesiones fijas de sus proyectos */
   busy: { start: Date; end: Date; isClass?: boolean }[];
-  /** Reservas de todo el club, para preferir horas menos concurridas */
-  labBookings: { start: Date; end: Date; people: number }[];
+  /** Horarios en el lab de gente de sus proyectos: se prefiere coincidir con ellos */
+  teamPresence?: { start: Date; end: Date }[];
+  /** @deprecated ya no se usa: el lab no tiene cupo y coincidir con más gente no es malo */
+  labBookings?: { start: Date; end: Date; people: number }[];
 };
 
 export type PersonalResult = {
@@ -258,10 +260,11 @@ export function proposePersonal(input: PersonalInput): PersonalResult {
     }
   };
 
-  for (const b of input.labBookings) {
+  // Cuántas personas del equipo hay en cada slot (para preferir coincidir con ellas).
+  for (const b of input.teamPresence ?? []) {
     eachSlot(b.start, b.end, (d, from, to) => {
       const l = load.get(d)!;
-      for (let i = from; i < to; i++) l[i] += b.people;
+      for (let i = from; i < to; i++) l[i] += 1;
     });
   }
   for (const b of input.busy) {
@@ -299,23 +302,20 @@ export function proposePersonal(input: PersonalInput): PersonalResult {
             total += l[i];
           }
           if (!ok) continue;
-          // Menor = mejor: un bloque por día, días en que ya vas a la Ibero, pegado a una clase, lab menos concurrido.
+          // Menor = mejor: un bloque por día, coincidir con tu equipo, días en que ya vas a la Ibero, pegado a una clase.
+          const teamAvg = total / len;
           const score =
-            (perDay.get(day) ?? 0) * 1000 +
+            (perDay.get(day) ?? 0) * 1000 -
+            (input.usesLab ? Math.min(2, teamAvg) * 150 : 0) +
             (hasClass.has(day) ? 0 : 200) +
             (edges.has(start) || edges.has(start + len) ? 0 : 100) +
-            (input.usesLab ? total * 10 : 0) +
             start * 0.01;
           if (!best || score < best.score) best = { day, start, score };
         }
       }
       if (!best) break;
       const bz = busy.get(best.day)!;
-      const l = load.get(best.day)!;
-      for (let i = best.start; i < best.start + len; i++) {
-        bz[i] = true;
-        if (input.usesLab) l[i] += 1;
-      }
+      for (let i = best.start; i < best.start + len; i++) bz[i] = true;
       perDay.set(best.day, (perDay.get(best.day) ?? 0) + 1);
       blocks.push({
         start: fromLocal(best.day, settings.openMinute + best.start * slot, timeZone),

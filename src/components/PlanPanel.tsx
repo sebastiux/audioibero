@@ -14,6 +14,7 @@ import type { IberoClass } from "@/lib/ibero-pdf";
 import type { LabConfig, ProjectOption, SlotKind } from "@/lib/types";
 
 type Busy = { start: string; end: string; title: string; type: "class" | "booking" | "mission" };
+type LegendKey = Busy["type"] | "team";
 type Block = { key: number; start: Date; end: Date };
 
 function nextWeek() {
@@ -34,10 +35,11 @@ const PERIODS: { id: Exclude<Period, "custom">; label: string }[] = [
   { id: "semester", label: "Todo el semestre" },
 ];
 
-const BUSY_STYLE: Record<Busy["type"], { bg: string; label: string }> = {
+const BUSY_STYLE: Record<LegendKey, { bg: string; label: string }> = {
   class: { bg: "#a1a1aa", label: "Clase" },
-  booking: { bg: "#71717a", label: "Ya reservado" },
+  booking: { bg: "#71717a", label: "Ya registrado" },
   mission: { bg: "#16161d", label: "Sesión fija de proyecto" },
+  team: { bg: "#ddd6fe", label: "Va a estar tu equipo" },
 };
 
 const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -60,6 +62,7 @@ export function PlanPanel(props: {
   const [kind, setKind] = useState<SlotKind>("LAB");
   const [projectId, setProjectId] = useState("");
   const [busy, setBusy] = useState<Busy[] | null>(null);
+  const [team, setTeam] = useState<{ start: string; end: string; names: string[] }[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -132,11 +135,18 @@ export function PlanPanel(props: {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await api<{ blocks: { start: string; end: string }[]; busy: Busy[]; missingMinutes: number; hasIbero: boolean }>(
+      const res = await api<{
+        blocks: { start: string; end: string }[];
+        busy: Busy[];
+        team: { start: string; end: string; names: string[] }[];
+        missingMinutes: number;
+        hasIbero: boolean;
+      }>(
         "/api/me/plan/propose",
         { body: { from: range.from, to: range.to, weeklyHours: hours, blockMinutes, kind } },
       );
       setBusy(res.busy);
+      setTeam(res.team);
       setBlocks(res.blocks.map((b) => ({ key: ++keyRef.current, start: new Date(b.start), end: new Date(b.end) })));
       if (res.missingMinutes > 0) {
         setMessage({ ok: false, text: `No cupieron ${formatHours(res.missingMinutes)}: no hay suficientes huecos libres en el horario del lab entre tus clases.` });
@@ -155,8 +165,8 @@ export function PlanPanel(props: {
       const res = await api<{ created: number; skipped: { start: string; reason: string }[] }>("/api/me/plan/apply", {
         body: { kind, projectId: projectId || null, blocks: blocks.map((b) => ({ start: b.start, end: b.end })) },
       });
-      const skipped = res.skipped.length ? ` ${res.skipped.length} no se pudieron reservar: ${res.skipped.map((s) => s.reason).join("; ")}.` : "";
-      setMessage({ ok: res.created > 0, text: `Se reservaron ${res.created} bloques.${skipped}` });
+      const skipped = res.skipped.length ? ` ${res.skipped.length} no se pudieron guardar: ${res.skipped.map((s) => s.reason).join("; ")}.` : "";
+      setMessage({ ok: res.created > 0, text: `Se guardaron ${res.created} horarios.${skipped}` });
       if (res.created > 0) {
         setBlocks([]);
         setBusy(null);
@@ -180,6 +190,18 @@ export function PlanPanel(props: {
       editable: false,
       classNames: ["opacity-80"],
     }));
+    // Dónde va a estar tu equipo (fondo morado): ahí conviene coincidir.
+    for (const [i, t] of team.entries()) {
+      out.push({
+        id: `team-${i}`,
+        start: t.start,
+        end: t.end,
+        display: "background",
+        backgroundColor: "#ddd6fe",
+        title: `Tu equipo: ${t.names.join(", ")}`,
+        extendedProps: { team: true },
+      });
+    }
     for (const b of blocks) {
       out.push({
         id: `block-${b.key}`,
@@ -194,7 +216,7 @@ export function PlanPanel(props: {
       });
     }
     return out;
-  }, [busy, blocks, kind]);
+  }, [busy, team, blocks, kind]);
 
   const updateBlock = (key: number, start: Date | null, end: Date | null) => {
     if (!start || !end) return;
@@ -208,11 +230,11 @@ export function PlanPanel(props: {
           <h1 className="text-2xl font-bold">Mi plan</h1>
           <p className="mt-1 max-w-3xl text-sm text-zinc-500">
             Sube tu PDF de materias inscritas, di cuántas horas a la semana quieres dedicarle al club y para qué periodo (una semana o
-            todo el semestre) y te proponemos horarios que no choquen con tus clases ni con las sesiones fijas de tus proyectos. Arrastra
-            los bloques para ajustarlos y luego resérvalos.
+            todo el semestre) y te proponemos horarios que no choquen con tus clases ni con las sesiones fijas de tus proyectos, de
+            preferencia cuando también va a estar tu equipo. Arrastra los bloques para ajustarlos y luego guárdalos.
           </p>
         </div>
-        <a className="btn-ghost" href="/api/me/export" download>⤓ Exportar mis reservas (.ics)</a>
+        <a className="btn-ghost" href="/api/me/export" download>⤓ Exportar mis horarios (.ics)</a>
       </div>
 
       <section className="card space-y-3 p-5">
@@ -222,7 +244,7 @@ export function PlanPanel(props: {
             <p className="text-sm text-zinc-500">
               {props.iberoUpdatedAt
                 ? `Guardado el ${new Date(props.iberoUpdatedAt).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}. Súbelo de nuevo si cambió.`
-                : "Sube el PDF de “Materias inscritas”. Sin él, la propuesta sólo evita tus reservas y las sesiones fijas de tus proyectos."}
+                : "Sube el PDF de “Materias inscritas”. Sin él, la propuesta sólo evita tus horarios registrados y las sesiones fijas de tus proyectos."}
             </p>
           </div>
           <div className="flex gap-2">
@@ -413,8 +435,8 @@ export function PlanPanel(props: {
                 endTime: minutesToHHMM(props.lab.closeMinute).replace("24:00", "23:59"),
               }}
               snapDuration="00:15:00"
-              eventOverlap={false}
-              selectOverlap={false}
+              eventOverlap={(still) => still.extendedProps.team === true}
+              selectOverlap={(ev) => ev.extendedProps.team === true}
               selectable
               selectMirror
               selectAllow={(s) => s.start.toDateString() === new Date(s.end.getTime() - 1).toDateString()}
@@ -447,7 +469,7 @@ export function PlanPanel(props: {
               </ul>
             </div>
             <button className="btn-primary w-full" onClick={apply} disabled={loading || blocks.length === 0}>
-              Reservar {blocks.length} bloques
+              Guardar {blocks.length} horarios
             </button>
           </aside>
         </div>
