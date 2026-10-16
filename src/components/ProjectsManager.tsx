@@ -22,6 +22,40 @@ const PALETTE = ["#c8102e", "#7c3aed", "#2563eb", "#0891b2", "#059669", "#ca8a04
 
 type ActivityEdit = { mission: MissionItem | null; projectId: string | null; type: MissionItem["type"] };
 
+/** Envía (o reenvía) un recordatorio por correo a los integrantes. */
+function EmailButton({ missionId }: { missionId: string }) {
+  const router = useRouter();
+  const [state, setState] = useState<"idle" | "sending" | "done">("idle");
+  async function send() {
+    if (!confirm("¿Enviar este recordatorio por correo ahora?")) return;
+    setState("sending");
+    try {
+      const r = await api<{ sent: number; recipients: number; configured: boolean }>(`/api/missions/${missionId}/notify`, { method: "POST" });
+      if (r.sent === 0) {
+        alert(
+          r.recipients === 0
+            ? "No hay integrantes con cuenta activa a quién enviarlo."
+            : r.configured
+              ? "Resend no pudo enviar el correo. Revisa EMAIL_FROM y el dominio verificado."
+              : "El correo no está configurado (falta RESEND_API_KEY).",
+        );
+        setState("idle");
+        return;
+      }
+      setState("done");
+      router.refresh();
+    } catch (err) {
+      alert((err as Error).message);
+      setState("idle");
+    }
+  }
+  return (
+    <button className="text-xs font-medium text-brand hover:underline disabled:opacity-50" onClick={send} disabled={state !== "idle"}>
+      {state === "sending" ? "Enviando…" : state === "done" ? "Enviado ✓" : "📧 Enviar"}
+    </button>
+  );
+}
+
 /** Sesiones fijas y recordatorios de un proyecto (o de todo el club). */
 function Activities({
   items,
@@ -90,11 +124,19 @@ function Activities({
                     </span>
                   )}
                   {m.description && <span className="block whitespace-pre-wrap text-xs text-zinc-600">{m.description}</span>}
+                  {isAdmin && m.emailedAt && (
+                    <span className="block text-xs text-zinc-400">
+                      📧 Enviado el {new Date(m.emailedAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
+                    </span>
+                  )}
                 </span>
                 {isAdmin && (
-                  <button className="shrink-0 text-xs text-zinc-500 hover:underline" onClick={() => onEdit({ mission: m, projectId, type: m.type })}>
-                    Editar
-                  </button>
+                  <span className="flex shrink-0 gap-2">
+                    <EmailButton missionId={m.id} />
+                    <button className="text-xs text-zinc-500 hover:underline" onClick={() => onEdit({ mission: m, projectId, type: m.type })}>
+                      Editar
+                    </button>
+                  </span>
                 )}
               </li>
             ))}

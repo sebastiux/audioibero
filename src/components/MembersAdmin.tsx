@@ -13,6 +13,9 @@ type UserRow = {
   active: boolean;
   createdAt: string;
   weekMinutes: number;
+  /** Aún no define su contraseña desde el correo de invitación */
+  pending: boolean;
+  invitedAt: string | null;
 };
 
 type Settings = {
@@ -27,6 +30,18 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const filtered = users.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(query.toLowerCase()));
+
+  const [notice, setNotice] = useState<InviteNotice | null>(null);
+
+  async function resend(u: UserRow) {
+    try {
+      const res = await api<InviteResult & { kind: "invite" | "reset" }>(`/api/users/${u.id}/invite`, { method: "POST" });
+      setNotice({ email: u.email, ...res });
+      router.refresh();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
 
   async function update(id: string, body: Partial<Pick<UserRow, "role" | "active">>) {
     try {
@@ -66,6 +81,11 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
                   <td className="px-4 py-3">
                     <div className="font-medium">{u.name}{u.id === meId && <span className="ml-1 text-zinc-400">(tú)</span>}</div>
                     <div className="text-xs text-zinc-500">{u.email}</div>
+                    {u.pending && (
+                      <div className="mt-0.5 text-xs font-medium text-amber-700">
+                        ✉️ Invitación pendiente{u.invitedAt ? ` · enviada el ${new Date(u.invitedAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}` : ""}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <select
@@ -79,7 +99,12 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
                     </select>
                   </td>
                   <td className="px-4 py-3">{formatHours(u.weekMinutes)}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="space-x-1 whitespace-nowrap px-4 py-3 text-right">
+                    {u.active && u.id !== meId && (
+                      <button className="btn-ghost py-1" onClick={() => resend(u)} title={u.pending ? "Reenviar el correo de invitación" : "Enviar enlace para cambiar contraseña"}>
+                        {u.pending ? "Reenviar invitación" : "Enlace de contraseña"}
+                      </button>
+                    )}
                     <button className="btn-ghost py-1" disabled={u.id === meId} onClick={() => update(u.id, { active: !u.active })}>
                       {u.active ? "Desactivar" : "Reactivar"}
                     </button>
@@ -96,12 +121,15 @@ export function MembersAdmin({ meId, users, settings }: { meId: string; users: U
       {adding && (
         <AddMemberDialog
           onClose={() => setAdding(false)}
-          onSaved={() => {
+          onSaved={(n) => {
             setAdding(false);
+            setNotice(n);
             router.refresh();
           }}
         />
       )}
+
+      {notice && <InviteNoticeDialog notice={notice} onClose={() => setNotice(null)} />}
     </div>
   );
 }
@@ -198,16 +226,20 @@ function NumberField(props: { label: string; value: number; min: number; max: nu
   );
 }
 
-function AddMemberDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+type InviteResult = { emailSent: boolean; emailConfigured: boolean; link?: string };
+type InviteNotice = InviteResult & { email: string; kind?: "invite" | "reset" };
+
+function AddMemberDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (n: InviteNotice) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
+    const body = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
     try {
-      await api("/api/users", { body: Object.fromEntries(new FormData(e.currentTarget)) });
-      onSaved();
+      const res = await api<InviteResult>("/api/users", { body });
+      onSaved({ email: body.email, kind: "invite", ...res });
     } catch (err) {
       setError((err as Error).message);
       setSaving(false);
@@ -217,17 +249,16 @@ function AddMemberDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (
   return (
     <Modal title="Dar de alta a un miembro" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-zinc-500">
+          Le llegará un correo con un enlace para activar su cuenta y definir su contraseña (vale 7 días).
+        </p>
         <div>
           <label className="label">Nombre</label>
           <input className="input" name="name" required minLength={2} />
         </div>
         <div>
           <label className="label">Correo</label>
-          <input className="input" name="email" type="email" required />
-        </div>
-        <div>
-          <label className="label">Contraseña temporal</label>
-          <input className="input" name="password" type="text" required minLength={8} />
+          <input className="input" name="email" type="email" required placeholder="nombre@correo.ibero.mx" />
         </div>
         <div>
           <label className="label">Perfil</label>
@@ -238,9 +269,49 @@ function AddMemberDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (
         </div>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end">
-          <button className="btn-primary" disabled={saving}>{saving ? "Guardando…" : "Dar de alta"}</button>
+          <button className="btn-primary" disabled={saving}>{saving ? "Enviando invitación…" : "Dar de alta y enviar invitación"}</button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function InviteNoticeDialog({ notice, onClose }: { notice: InviteNotice; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const what = notice.kind === "reset" ? "el enlace para cambiar su contraseña" : "la invitación";
+  return (
+    <Modal title={notice.emailSent ? "Correo enviado" : "No se pudo enviar el correo"} onClose={onClose}>
+      {notice.emailSent ? (
+        <p className="text-sm">
+          Enviamos {what} a <b>{notice.email}</b>. Si no le llega, que revise spam o reenvíala desde la tabla.
+        </p>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <p>
+            {notice.emailConfigured
+              ? "Resend rechazó el envío (revisa el remitente EMAIL_FROM y el dominio verificado)."
+              : "El correo no está configurado (falta RESEND_API_KEY)."}
+            {notice.link ? " Mientras tanto, comparte este enlace con la persona:" : ""}
+          </p>
+          {notice.link && (
+            <div className="flex gap-2">
+              <input className="input text-xs" readOnly value={notice.link} onFocus={(e) => e.target.select()} />
+              <button
+                className="btn-dark shrink-0"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(notice.link!);
+                  setCopied(true);
+                }}
+              >
+                {copied ? "Copiado" : "Copiar"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="mt-5 flex justify-end">
+        <button className="btn-primary" onClick={onClose}>Listo</button>
+      </div>
     </Modal>
   );
 }

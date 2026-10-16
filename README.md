@@ -19,13 +19,22 @@ Plataforma para organizar el laboratorio y los proyectos del Club de Audio Ibero
 | Eliminar horarios completos | — | ✅ |
 | Asignar horarios a miembros y cambiar participantes | — | ✅ |
 | Dar de alta, editar y archivar proyectos y sus integrantes | — | ✅ |
-| Gestionar miembros (alta, perfil, desactivar), ver horas por semana y horario del lab | — | ✅ |
+| Dar de alta miembros (reciben un correo para activar su cuenta), cambiar perfil, desactivar, reenviar invitación | — | ✅ |
+| Enviar recordatorios por correo (al guardarlos o con un botón; aviso automático el día de la fecha) | — | ✅ |
 
 Tipos de horario: **Lab** (trabajo en el laboratorio), **Sesión de proyecto** (en el lab, el equipo se une) y **Asíncrono** (trabajo fuera del lab, con o sin proyecto).
 
 Coincidencias: arriba del calendario se ve quién está **ahora** en el lab y, para cada horario tuyo, **quién coincide contigo y en qué tramo** (la gente de tus proyectos resaltada); el filtro "Mi equipo" muestra sólo a tus compañeros de proyecto.
 
 Reglas: el lab no tiene cupo ni hay tope de horas por persona; nadie puede registrar dos horarios que se crucen; a las sesiones de un proyecto sólo se suman sus integrantes. Si el último participante se quita, el horario desaparece.
+
+## Cuentas y correo (Resend)
+
+No hay registro abierto: **sólo el admin da de alta** (Miembros y lab → "+ Alta" con nombre, correo y perfil). La persona recibe un correo con un enlace de un solo uso (7 días) para **definir su contraseña** y empieza a usar la app. Desde la tabla se puede reenviar la invitación o mandar un enlace para cambiar contraseña, y en el login está "¿Olvidaste tu contraseña?" (enlace de 2 horas). Los enlaces se guardan sólo como hash.
+
+Los **recordatorios** de proyecto (o de todo el club) se envían por correo a los integrantes con cuenta activa: al guardarlos (casilla "Enviar por correo") o con el botón "📧 Enviar". Además, el día de su fecha se manda un aviso automático si se configura un cron diario que llame a `GET /api/cron/reminders` con `Authorization: Bearer $CRON_SECRET` (cada recordatorio se avisa una sola vez).
+
+Sin `RESEND_API_KEY` la app funciona igual: al dar de alta muestra el enlace de activación para compartirlo a mano.
 
 ## Mi plan (calendario Ibero)
 
@@ -57,9 +66,14 @@ Otros comandos: `npm test` (pruebas), `npm run lint` (typecheck), `npm run db:st
    - `DATABASE_URL` → referencia a la del Postgres: `${{Postgres.DATABASE_URL}}`
    - `AUTH_SECRET` → un secreto largo (`openssl rand -base64 48`)
    - `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` → admin inicial
-   - `INVITE_CODE` → código para que los miembros se registren (vacío = registro cerrado; el admin puede dar de alta desde el panel)
+   - `RESEND_API_KEY` → clave de [Resend](https://resend.com)
+   - `EMAIL_FROM` → remitente de un dominio verificado en Resend, p. ej. `Audio Ibero <lab@tudominio.mx>`
+   - `APP_URL` → URL pública de la app (para los enlaces de los correos)
+   - `CRON_SECRET` → secreto para el aviso diario de recordatorios
    - `APP_TIMEZONE` → `America/Mexico_City`
 4. Genera un dominio público en *Settings → Networking*.
+5. Aviso diario de recordatorios: crea en Railway un servicio **Cron** (p. ej. `0 14 * * *`, 8:00 en CDMX) con el comando
+   `curl -fsS -H "Authorization: Bearer $CRON_SECRET" $APP_URL/api/cron/reminders`, o usa cualquier cron externo.
 
 El seed es idempotente: si el admin ya existe no cambia su contraseña. Para restablecerla, define `ADMIN_RESET_PASSWORD=true`, haz deploy, inicia sesión y luego borra esa variable.
 

@@ -36,6 +36,8 @@ export function ActivityDialog({
   const [description, setDescription] = useState(mission?.description ?? "");
   const [pinned, setPinned] = useState(mission?.pinned ?? false);
   const [active, setActive] = useState(mission?.active ?? true);
+  // Un recordatorio nuevo se envía por correo por defecto; al editar, sólo si se marca.
+  const [notify, setNotify] = useState(!mission);
   const [dueDate, setDueDate] = useState(dateOnly(mission?.dueDate ?? null));
   const [weekdays, setWeekdays] = useState<number[]>(mission?.weekdays ?? []);
   const [start, setStart] = useState(minutesToHHMM(mission?.startMinute ?? 18 * 60));
@@ -66,9 +68,20 @@ export function ActivityDialog({
       startsOn: asDate(startsOn),
       endsOn: asDate(endsOn),
       kind,
+      notify: type === "REMINDER" && notify,
     };
     try {
-      await api(mission ? `/api/missions/${mission.id}` : "/api/missions", { method: mission ? "PUT" : "POST", body });
+      const res = await api<{ email?: { sent: number; failed: number; configured: boolean; recipients: number } }>(
+        mission ? `/api/missions/${mission.id}` : "/api/missions",
+        { method: mission ? "PUT" : "POST", body },
+      );
+      if (res.email && res.email.sent === 0 && res.email.recipients > 0) {
+        alert(
+          res.email.configured
+            ? "Se guardó, pero Resend no pudo enviar el correo. Revisa EMAIL_FROM y el dominio verificado."
+            : "Se guardó, pero el correo no está configurado (falta RESEND_API_KEY).",
+        );
+      }
       onSaved();
     } catch (err) {
       setError((err as Error).message);
@@ -168,7 +181,19 @@ export function ActivityDialog({
             <input type="checkbox" className="accent-brand" checked={active} onChange={(e) => setActive(e.target.checked)} />
             Activa
           </label>
+          {type === "REMINDER" && (
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" className="accent-brand" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+              📧 Enviar por correo al guardar
+            </label>
+          )}
         </div>
+        {type === "REMINDER" && (
+          <p className="-mt-2 text-xs text-zinc-500">
+            Se envía a {projectId || mission?.projectId ? "los integrantes del proyecto" : "todo el club"}. Si tiene fecha, el día de la
+            fecha se manda un aviso automático.
+          </p>
+        )}
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end gap-2">

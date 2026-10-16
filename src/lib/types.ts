@@ -43,6 +43,7 @@ export type MissionItem = {
   pinned: boolean;
   active: boolean;
   dueDate: string | null;
+  emailedAt?: string | null;
   weekdays: number[];
   startMinute: number | null;
   endMinute: number | null;

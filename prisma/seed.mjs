@@ -19,7 +19,11 @@ async function main() {
     const reset = process.env.ADMIN_RESET_PASSWORD === "true";
     await prisma.user.update({
       where: { email },
-      data: { role: "ADMIN", active: true, ...(reset ? { passwordHash: await bcrypt.hash(password, 12) } : {}) },
+      data: {
+        role: "ADMIN",
+        active: true,
+        ...(reset || !existing.passwordHash ? { passwordHash: await bcrypt.hash(password, 12), activatedAt: new Date() } : {}),
+      },
     });
     console.log(
       reset
@@ -34,6 +38,7 @@ async function main() {
       name: process.env.ADMIN_NAME?.trim() || "Admin",
       role: "ADMIN",
       passwordHash: await bcrypt.hash(password, 12),
+      activatedAt: new Date(),
     },
   });
   console.log(`[seed] admin ${email} creado`);

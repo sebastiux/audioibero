@@ -26,6 +26,12 @@ enum MissionType {
   RECURRING
 }
 
+/// INVITE = activar cuenta (la crea el admin); RESET = recuperar contraseña.
+enum TokenType {
+  INVITE
+  RESET
+}
+
 enum AssignmentSource {
   MANUAL
   RECOMMENDED
@@ -35,7 +41,8 @@ model User {
   id           String   @id @default(cuid())
   name         String
   email        String   @unique
-  passwordHash String
+  /// Nulo mientras la persona no activa su cuenta desde el correo de invitación.
+  passwordHash String?
   role         Role     @default(MEMBER)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -46,6 +53,10 @@ model User {
   iberoIcs          String?
   iberoClasses      Json?
   iberoIcsUpdatedAt DateTime?
+
+  invitedAt   DateTime?
+  activatedAt DateTime?
+  authTokens  AuthToken[]
 
   bookingsCreated    Booking[]            @relation("BookingCreator")
   missionsCreated    Mission[]
@@ -120,31 +131,49 @@ model BookingParticipant {
 /// Actividad de un proyecto: recordatorio o sesión fija recurrente predefinida por el admin.
 /// Sin proyecto (projectId nulo) aplica a todo el club.
 model Mission {
-  id          String      @id @default(cuid())
-  projectId   String?
-  title       String
-  description String?
-  type        MissionType @default(REMINDER)
-  pinned      Boolean     @default(false)
-  active      Boolean     @default(true)
+  id            String      @id @default(cuid())
+  projectId     String?
+  title         String
+  description   String?
+  type          MissionType @default(REMINDER)
+  pinned        Boolean     @default(false)
+  active        Boolean     @default(true)
   /// Recordatorio: fecha límite opcional
-  dueDate     DateTime?
+  dueDate       DateTime?
+  /// Último envío por correo (manual o al guardar) y aviso automático del día de la fecha
+  emailedAt     DateTime?
+  dueNotifiedAt DateTime?
   /// Sesión recurrente: días (0 = domingo ... 6 = sábado), horario local en minutos y vigencia
-  weekdays    Int[]       @default([])
-  startMinute Int?
-  endMinute   Int?
-  startsOn    DateTime?
-  endsOn      DateTime?
+  weekdays      Int[]       @default([])
+  startMinute   Int?
+  endMinute     Int?
+  startsOn      DateTime?
+  endsOn        DateTime?
   /// LAB = presencial en el lab; ASYNC = remota
-  kind        SlotKind    @default(LAB)
-  createdById String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  kind          SlotKind    @default(LAB)
+  createdById   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   createdBy User     @relation(fields: [createdById], references: [id])
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+}
+
+/// Enlace de un solo uso enviado por correo. Sólo se guarda el hash del token.
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  type      TokenType
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// Configuración única del laboratorio (fila con id = 1).

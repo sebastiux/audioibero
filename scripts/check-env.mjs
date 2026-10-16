@@ -19,6 +19,14 @@ if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) {
   problems.push("AUTH_SECRET falta o tiene menos de 32 caracteres.");
 }
 
+// El correo es opcional para arrancar, pero sin él no llegan invitaciones ni recordatorios.
+if (!process.env.RESEND_API_KEY) {
+  console.warn("[check-env] Aviso: falta RESEND_API_KEY; no se enviarán invitaciones ni recordatorios por correo.");
+}
+if (!process.env.APP_URL && !process.env.RAILWAY_PUBLIC_DOMAIN) {
+  console.warn("[check-env] Aviso: falta APP_URL; los enlaces de los correos podrían apuntar a localhost.");
+}
+
 if (problems.length) {
   console.error("\n[check-env] Configuración inválida:\n" + problems.map((p) => `  - ${p}`).join("\n") + "\n");
   process.exit(1);

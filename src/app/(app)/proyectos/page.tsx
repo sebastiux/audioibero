@@ -36,6 +36,7 @@ export default async function ProjectsPage() {
         startsOn: m.startsOn?.toISOString() ?? null,
         endsOn: m.endsOn?.toISOString() ?? null,
         kind: m.kind,
+        emailedAt: m.emailedAt?.toISOString() ?? null,
       }))}
       projects={projects.map((p) => ({
         id: p.id,

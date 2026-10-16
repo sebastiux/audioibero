@@ -15,7 +15,7 @@ export default async function MembersPage() {
 
   const [users, participations, settings] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, active: true, createdAt: true, invitedAt: true, passwordHash: true },
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
     prisma.bookingParticipant.findMany({
@@ -33,7 +33,13 @@ export default async function MembersPage() {
   return (
     <MembersAdmin
       meId={admin.id}
-      users={users.map((u) => ({ ...u, createdAt: u.createdAt.toISOString(), weekMinutes: minutes.get(u.id) ?? 0 }))}
+      users={users.map(({ passwordHash, ...u }) => ({
+        ...u,
+        createdAt: u.createdAt.toISOString(),
+        invitedAt: u.invitedAt?.toISOString() ?? null,
+        pending: !passwordHash,
+        weekMinutes: minutes.get(u.id) ?? 0,
+      }))}
       settings={{
         openMinute: settings.openMinute,
         closeMinute: settings.closeMinute,

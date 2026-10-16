@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 
-const PUBLIC_PAGES = ["/login", "/registro"];
+const PUBLIC_PAGES = ["/login", "/recuperar", "/activar"];
 
 /** Redirige a /login si no hay sesión. Los permisos finos (admin) se revisan en servidor con la BD. */
 export async function middleware(req: NextRequest) {
@@ -12,7 +12,10 @@ export async function middleware(req: NextRequest) {
   const isPublic = PUBLIC_PAGES.includes(pathname);
 
   if (!session && !isPublic) return NextResponse.redirect(new URL("/login", req.url));
-  if (session && (isPublic || pathname === "/")) return NextResponse.redirect(new URL("/calendario", req.url));
+  // /activar sí se puede abrir con sesión iniciada (p. ej. si alguien abre un enlace en un navegador ya logueado).
+  if (session && (pathname === "/login" || pathname === "/recuperar" || pathname === "/")) {
+    return NextResponse.redirect(new URL("/calendario", req.url));
+  }
   return NextResponse.next();
 }
 

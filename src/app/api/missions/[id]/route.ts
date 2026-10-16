@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { badRequest, notFound, parseBody, requireAdmin, route, type IdParams } from "@/lib/api";
 import { missionSchema } from "@/lib/validation";
 import { normalizeMission } from "@/lib/missions-db";
+import { emailReminder } from "@/lib/reminders";
 
 export const PUT = route<IdParams>(async (req, { params }) => {
   await requireAdmin();
@@ -14,7 +15,8 @@ export const PUT = route<IdParams>(async (req, { params }) => {
     throw badRequest("El proyecto no existe");
   }
   const mission = await prisma.mission.update({ where: { id }, data: normalizeMission(data) });
-  return NextResponse.json({ mission });
+  const email = data.notify && mission.type === "REMINDER" && mission.active ? await emailReminder(mission.id) : undefined;
+  return NextResponse.json({ mission, email });
 });
 
 export const DELETE = route<IdParams>(async (_req, { params }) => {

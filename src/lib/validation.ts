@@ -9,12 +9,11 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Escribe tu contraseña"),
 });
 
-export const registerSchema = z.object({
-  name: z.string().trim().min(2, "Escribe tu nombre").max(80),
-  email: z.string().trim().toLowerCase().email("Correo inválido"),
-  password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(200),
-  inviteCode: z.string().trim(),
-});
+export const passwordSchema = z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(200);
+
+export const activateSchema = z.object({ token: z.string().min(20), password: passwordSchema });
+
+export const forgotSchema = z.object({ email: z.string().trim().toLowerCase().email("Correo inválido") });
 
 const slotBase = {
   start: dateTime,
@@ -68,7 +67,6 @@ export const settingsSchema = z
 export const userCreateSchema = z.object({
   name: z.string().trim().min(2, "Escribe el nombre").max(80),
   email: z.string().trim().toLowerCase().email("Correo inválido"),
-  password: z.string().min(8, "La contraseña temporal debe tener al menos 8 caracteres").max(200),
   role: z.enum(["MEMBER", "ADMIN"]).default("MEMBER"),
 });
 
@@ -89,6 +87,8 @@ export const missionSchema = z
     startsOn: dateTime.nullish(),
     endsOn: dateTime.nullish(),
     kind: z.enum(["LAB", "ASYNC"]).default("LAB"),
+    /** Enviar el recordatorio por correo al guardar */
+    notify: z.boolean().default(false),
   })
   .superRefine((m, ctx) => {
     if (m.type !== "RECURRING") return;
